@@ -1,0 +1,144 @@
+
+config:
+  euroc:
+    folder: /media/finostro/KINGSTON/euroc_dataset/V2_01_easy
+    timestampsFilename: /media/finostro/KINGSTON/euroc_dataset/EuRoC_TimeStamps/V201.txt
+  use_gui: true
+  logging:
+    logResultsToFile: true
+    logTimingToFile: true
+    logDirPrefix: data/rbphdslam6d
+  timesteps: 3000
+  sec_per_timestep: 0.1
+  trajectory:
+    nSegments: 5
+    max_dx_per_sec: 0.30
+    max_dy_per_sec: 0.10
+    max_dz_per_sec: 0.10
+    min_dx_per_sec: 0.10
+    max_dqx_per_sec: 0.10
+    max_dqy_per_sec: 0.05
+    max_dqz_per_sec: 0.050
+    max_dqw_per_sec: 0.050
+    vardx: 0.00500
+    vardy: 0.00500
+    vardz: 0.00500
+    vardqx: 0.00200
+    vardqy: 0.00200
+    vardqz: 0.00200
+    vardqw: 0.00200
+  landmarks:
+    nLandmarks: 100
+    varlmx: 0.0002
+    varlmy: 0.0002
+    varlmz: 0.0002
+  measurements:
+    rangeLimitMax: 10.0
+    rangeLimitMin: 0.5
+    rangeLimitBuffer: 0.0
+    probDetection: 0.950
+    clutterIntensity: 5e-10
+    varzx: 0.0005
+    varzy: 0.0005
+    varzz: 0.0005
+  filter:
+    nParticles: 1000
+    predict:
+      processNoiseInflationFactor: 1.0
+      birthGaussianWeight: 0.01
+    update:
+      measurementNoiseInflationFactor: 10.0
+      KalmanFilter:
+        innovationThreshold:
+          range: 1.0
+          bearing: 0.2
+      GaussianCreateInnovMDThreshold: 3.0
+    weighting:
+      nEvalPt: 15
+      minWeight: 0.75
+      threshold: 3.0
+      useClusterProcess: false
+    resampling:
+      effNParticle: 500.0
+      minTimesteps: 2
+    merge:
+      threshold: 1.0
+      covInflationFactor: 1.5
+    prune:
+      threshold: 0.005
+base_link_to_cam0:
+  cols: 4
+  rows: 4
+  data: [0.0148655429818, -0.999880929698, 0.00414029679422, -0.0216401454975,
+         0.999557249008, 0.0149672133247, 0.025715529948, -0.064676986768,
+        -0.0257744366974, 0.00375618835797, 0.999660727178, 0.00981073058949,
+         0.0, 0.0, 0.0, 1.0]
+
+# Camera calibration and distortion parameters (OpenCV) 
+camera_params:
+   - fx:  458.654
+     fy: 457.296
+     cx: 367.215
+     cy: 248.375
+     k1: -0.28340811
+     k2: 0.07395907
+     p1: 0.00019359
+     p2: 1.76187114e-05
+     width: 752
+     height: 480
+     cv_c0_to_camera: 
+        rows: 4
+        cols: 4
+        data: [1.0,0.,0.,0.0,
+               0.,1.0,0.,0.0,
+               0.,0.,1.0,0.0,
+               0,0,0,1.0]
+   - fx:  457.587
+     fy: 456.134
+     cx: 379.999
+     cy: 255.238
+     k1: -0.28368365
+     k2: 0.07451284
+     p1: -0.00010473
+     p2: -3.55590700e-05
+     width: 752
+     height: 480
+     cv_c0_to_camera: 
+        rows: 4
+        cols: 4
+        data: [0.999997256477797,-0.002317135723275,-0.000343393120620,0.110074137800478,
+               0.002312067192432,0.999898048507103,-0.014090668452683,-0.000156612054392,
+               0.000376008102320,0.014089835846691,0.999900662638081,0.000889382785432,
+               0,0,0,1.000000000000000]
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 800
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7 #7
+
+stereo_init_max_depth: 60.0
+
+# Camera frames per second 
+Camera.fps: 20
+camera.focal_length: 458.0
+camera.baseline: 0.110074
+camera.principal_point: 
+        rows: 2
+        cols: 1
+        data: [379.999 , 255.238]
+

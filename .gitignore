@@ -1,0 +1,9 @@
+tools/matlab/*
+CMakeFiles/
+!bin/*.py
+*.orig
+*.bak
+cfg/*.xml
+.supermaven
+.cache
+compile_commands.json
