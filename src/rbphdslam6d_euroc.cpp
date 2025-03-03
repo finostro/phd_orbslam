@@ -34,13 +34,18 @@
 #include "RBPHDFilter.hpp"
 #include "external/argparse.hpp"
 #include "measurement_models/MeasurementModel_3D_stereo_orb.hpp"
+#include <boost/graph/visitors.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <filesystem>
+#include <memory>
+#include <rclcpp/node_options.hpp>
+#include <sensor_msgs/msg/detail/point_cloud2__struct.hpp>
 #include <stdio.h>
 #include <string>
 #include <sys/ioctl.h>
+#include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 #include <yaml-cpp/yaml.h>
 #include "misc/EigenYamlSerialization.hpp"
 
@@ -54,6 +59,12 @@
 
 #include <external/Converter.h>
 #include <external/ORBextractor.h>
+
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #ifdef _PERFTOOLS_CPU
 #include <gperftools/profiler.h>
@@ -123,7 +134,7 @@ public:
     if (*logDirPrefix_.rbegin() != '/')
       logDirPrefix_ += '/';
 
-    use_gui_ = node["config"]["use_gui"].as<bool>();
+    // use_gui_ = node["config"]["use_gui"].as<bool>();
     kMax_ = node["config"]["timesteps"].as<int>();
     // dT_ = node["config"]["sec_per_timestep"].as<double>();
     // dTimeStamp_ = TimeStamp(dT_);
@@ -688,13 +699,146 @@ public:
     pFilter_->config.useClusterProcess_ = useClusterProcess_;
 
     // Visualization
-    if (use_gui_) {
-      visualizer = new Visualizer6D();
-      std::vector<MeasurementModel_3D_stereo_orb::TLandmark> groundtruth_landmark;
-      std::vector<MotionModel_Odometry6d::TState> groundtruth_pose= deadReckoning_pose_;
-      visualizer->setup(groundtruth_landmark, groundtruth_pose, deadReckoning_pose_);
-      visualizer->start();
+    if (use_ros_gui_) {
+	  marker_pub_ = visualization_node_->create_publisher<visualization_msgs::msg::MarkerArray>("phd_orbslam_minimal/marker", 10);
+	  landmark_cloud_pub_ = visualization_node_->create_publisher<sensor_msgs::msg::PointCloud2>("landmark_cloud", 10);
     }
+
+  }
+
+  visualization_msgs::msg::Marker makeFrustumMarker() {
+
+    auto best_particle = pFilter_->getBestParticle();
+
+    auto position = best_particle->getPose()->getPos();
+    Eigen::Quaterniond orientation(  best_particle->getPose()->getRot());
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = rclcpp::Time(0);
+    marker.ns = "frustum";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = position[0];
+    marker.pose.position.y = position[1];
+    marker.pose.position.z = position[2];
+    marker.pose.orientation.x = orientation.x();
+    marker.pose.orientation.y = orientation.y();
+    marker.pose.orientation.z = orientation.z();
+    marker.pose.orientation.w = orientation.w();  
+    
+    std::vector<gtsam::Point3> frustum_points_in_camera_frame;
+    frustum_points_in_camera_frame.resize(8);
+
+    auto measurementModel = pFilter_->getMeasurementModel();
+    gtsam::StereoPoint2 stereopoint(0, 0.01, 0.);
+    std::cout << "stereopoint: " << stereopoint << "\n";
+    frustum_points_in_camera_frame[0] = measurementModel->config.camera.camera.backproject(stereopoint);
+    std::cout << "frustum_points_in_camera_frame[0]: " << frustum_points_in_camera_frame[0] << "\n";
+    frustum_points_in_camera_frame[0] =
+        frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[0].norm());
+    std::cout << "frustum_points_in_camera_frame[0]: " << frustum_points_in_camera_frame[0] << "\n";
+    frustum_points_in_camera_frame[4] =
+        frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[0].norm());
+    std::cout << "frustum_points_in_camera_frame[4]: " << frustum_points_in_camera_frame[4] << "\n";
+
+    stereopoint = gtsam::StereoPoint2(0.99, 0, 1);
+    frustum_points_in_camera_frame[1] = measurementModel->config.camera.camera.backproject(stereopoint);
+    frustum_points_in_camera_frame[1] =
+        frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[1].norm());
+    frustum_points_in_camera_frame[5] =
+        frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[1].norm());
+
+    stereopoint = gtsam::StereoPoint2(0, 1, 0.01);
+    frustum_points_in_camera_frame[2] = measurementModel->config.camera.camera.backproject(stereopoint);
+    frustum_points_in_camera_frame[2] =
+        frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[2].norm());
+    frustum_points_in_camera_frame[6] =
+        frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[2].norm());
+
+    stereopoint = gtsam::StereoPoint2(0.99, 1, 1.0);
+    frustum_points_in_camera_frame[3] = measurementModel->config.camera.camera.backproject(stereopoint);
+    frustum_points_in_camera_frame[3] =
+        frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[3].norm());
+    frustum_points_in_camera_frame[7] =
+        frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[3].norm());
+    marker.points.resize(frustum_points_in_camera_frame.size());
+    for (size_t  i = 0 ; i < frustum_points_in_camera_frame.size(); i++){
+      marker.points[i].x = frustum_points_in_camera_frame[i][0];
+      marker.points[i].y = frustum_points_in_camera_frame[i][1];
+      marker.points[i].z = frustum_points_in_camera_frame[i][2];
+    }
+
+    marker.scale.x = 0.1;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 1.0;
+    marker.color.r = 1.0;
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    return marker;
+  }
+  std::unique_ptr<sensor_msgs::msg::PointCloud2> makeRosPointcloud(){
+
+    auto best_particle = pFilter_->getBestParticle();
+    auto gaussian_mixture = best_particle->getData();
+    int num_gaussians = gaussian_mixture->getGaussianCount();
+    int num_points = 0;
+
+    for (int i = 0; i < num_gaussians; i++) {
+      auto weight = gaussian_mixture->getWeight(i);
+      if ( weight == 0 )
+	continue;
+    
+      num_points++;
+
+    }
+
+
+
+    
+    auto  pointcloud_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+    pointcloud_msg->header.frame_id = "map";
+    pointcloud_msg->header.stamp = rclcpp::Time(0);
+    
+    
+    sensor_msgs::PointCloud2Modifier modifier(*pointcloud_msg);
+    modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y", 1, sensor_msgs::msg::PointField::FLOAT32, "z", 1, sensor_msgs::msg::PointField::FLOAT32, "intensity", 1, sensor_msgs::msg::PointField::FLOAT32);
+    modifier.resize(num_points);
+
+
+    sensor_msgs::PointCloud2Iterator<float> iter_x(*pointcloud_msg, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(*pointcloud_msg, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(*pointcloud_msg, "z");
+    sensor_msgs::PointCloud2Iterator<float> iter_intensity(*pointcloud_msg, "intensity");
+    
+
+    int np = 0 ;
+    for (int i = 0; i < num_gaussians; i++) {
+      auto weight = gaussian_mixture->getWeight(i);
+      if ( weight == 0 )
+	continue;
+    
+      auto mean = gaussian_mixture->getGaussian(i)->get();
+      iter_x[np] = mean.x();
+      iter_y[np] = mean.y();
+      iter_z[np] = mean.z();
+      iter_intensity[np] = weight;
+	
+      np++;
+
+    }
+
+
+    return std::move(pointcloud_msg);
+  }
+
+  std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(){
+    auto marker_array_msg = std::make_unique<visualization_msgs::msg::MarkerArray>();
+    marker_array_msg->markers.push_back(makeFrustumMarker());
+    
+    return std::move(marker_array_msg);
   }
 
   void stereoMatchesToMeasurments(std::vector<cv::KeyPoint> &keypoints_left, std::vector<cv::KeyPoint> &keypoints_right,
@@ -1188,9 +1332,15 @@ public:
       }
 
       // Visualization
-      if (use_gui_) {
-        // diplay particle poses
-        visualizer->update(pFilter_);
+      if (use_ros_gui_) {
+
+
+	marker_pub_->publish(makeRosMarkerArray());
+	landmark_cloud_pub_->publish(makeRosPointcloud());
+	
+
+	
+      
       }
     }
 
@@ -1399,11 +1549,17 @@ private:
   std::string eurocFolder_;
   std::string eurocTimestampsFilename_;
 
-  // 3D visualization
-  bool use_ros_gui_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr landmark_cloud_pub_;
+  
+
+
 
 
 public:
+  rclcpp::Node::SharedPtr visualization_node_;
+  // 3D visualization
+  bool use_ros_gui_;
   std::string logDirPrefix_;
 };
 
@@ -1443,6 +1599,11 @@ int main(int argc, char *argv[]) {
   std::cout << "Configuration file: " << cfgFileName << std::endl;
   if (!sim.readConfigFile(cfgFileName.data())) {
     return -1;
+  }
+
+  if (sim.use_ros_gui_) {
+    rclcpp::init(argc, argv);
+    sim.visualization_node_ = std::make_shared<rclcpp::Node>("visualization");
   }
 
   std::cout << "Trajectory: " << trajNum << std::endl;

@@ -1,135 +1,34 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.20)
 
-#
-# If the user specifies -DCMAKE_BUILD_TYPE on the command line, take their definition
-# and dump it in the cache along with proper documentation, otherwise set CMAKE_BUILD_TYPE
-# to Debug prior to calling PROJECT()
-#
-
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
 
-option (FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." TRUE)
-
-if (${FORCE_COLORED_OUTPUT})
-    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-       add_compile_options (-fdiagnostics-color=always)
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-       add_compile_options (-fcolor-diagnostics)
-    endif ()
-endif ()
-
-
-IF(DEFINED CMAKE_BUILD_TYPE)
-   SET(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
-ELSE()
-   SET(CMAKE_BUILD_TYPE RELEASE CACHE STRING "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
-ENDIF()
 
 PROJECT(phd_orbslam_minimal)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
-# choose latest opengl
-set(OpenGL_GL_PREFERENCE GLVND)
-# Compiler settings
-# Note: to change compiler, use for example...
-# cmake -D CMAKE_C_COMPILER=gcc CMAKE_CXX_COMPILER=c++ .
-#SET(CMAKE_C_COMPILER "gcc")
-#SET(CMAKE_CXX_COMPILER "g++")
-
-
-option (CMAKE_GENERATE_COMPILE_COMMANDS "Generate compile commands" ON)
-
-option (BUILD_WITH_MARCH_NATIVE "Build with \"-march native\"" OFF)
-  if(BUILD_WITH_MARCH_NATIVE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "arm" AND "${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
-  endif()
 
 
 
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-   add_compile_options (-fdiagnostics-color=always)
-elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-   add_compile_options (-fcolor-diagnostics)
-endif ()
-#MESSAGE("CMAKE_CXX_COMPILTER_ID = ${CMAKE_CXX_COMPILER_ID}")
-IF(APPLE)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-ignored-qualifiers ") # For Eigen const warnings
-  IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    MESSAGE("NOTE: Libraries being linked to RFSSLAM must also be compiled using GCC")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-enum-compare ") # For Eigen enum compare warnings
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wa,-q ") #required for march=native errors. This forces clang assembler to be used, and will produce some argument unused warnings. 
-  ENDIF()
-ENDIF()
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
 
 
 
 
-# sanitizer
-
-if (USE_SANITIZER STREQUAL "Address")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address  -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address  -fno-omit-frame-pointer")
-    set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}  -fsanitize=address  -fno-omit-frame-pointer")
-elseif (USE_SANITIZER STREQUAL "Thread")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
-    set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}  -fsanitize=thread")
-elseif (USE_SANITIZER STREQUAL "Undefined")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=undefined")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
-    set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}  -fsanitize=undefined")
-elseif (USE_SANITIZER STREQUAL "Leak")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=leak")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
-    set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}  -fsanitize=leak")
-elseif (USE_SANITIZER STREQUAL "Memory")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=memory  -fno-omit-frame-pointer -fsanitize-memory-track-origins")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=memory  -fno-omit-frame-pointer -fsanitize-memory-track-origins")
-    set (CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}  -fsanitize=memory  -fno-omit-frame-pointer -fsanitize-memory-track-origins")
-else()
-    SET(USE_SANITIZER "disabled" CACHE STRING "set sanitizer type.")
-endif()
-    
-    
 # ROS2 stuff
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tf2 REQUIRED)
-
-
-    # Google perftools
-FIND_PACKAGE(Perftools)
-IF(Perftools_FOUND)
-  IF("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    SET(USE_CPU_PROFILER OFF CACHE BOOL "Use Google Perftools for CPU profiling.")
-    SET(USE_HEAP_PROFILER OFF CACHE BOOL "Use Google Perftools for heap profiling.")
-  ELSE()
-    SET(USE_CPU_PROFILER OFF) # Does not play nice with Clang
-    SET(USE_HEAP_PROFILER OFF)
-  ENDIF()
-  IF(USE_CPU_PROFILER)
-    ADD_DEFINITIONS(-D_PERFTOOLS_CPU)
-    IF(APPLE)
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-no_pie ") # Required due to ASLR
-    ENDIF()
-  ENDIF()
-  IF(USE_HEAP_PROFILER)
-    ADD_DEFINITIONS(-D_PERFTOOLS_HEAP)
-    IF(APPLE)
-      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-no_pie ") # Required due to ASLR
-    ENDIF()
-  ENDIF()
-ENDIF()
-
 
 
 # OpenMP
@@ -257,15 +156,19 @@ ADD_EXECUTABLE(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
 ament_target_dependencies(rbphdslam6dSim_euroc
 rclcpp
 visualization_msgs
+std_msgs
+sensor_msgs
 tf2
 )
 TARGET_LINK_LIBRARIES(rbphdslam6dSim_euroc  ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   rfsslam ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   )
 
 
+install(
+  TARGETS rbphdslam6dSim_euroc
+  EXPORT export_${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}
+)
 
-# Installation
 
-install(TARGETS rbphdslam6dSim_euroc rfsslam
-    DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

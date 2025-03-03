@@ -34,6 +34,8 @@
 #include "Particle.hpp"
 #include "ProcessModel.hpp"
 #include "measurement_models/MeasurementModel.hpp"
+#include <cstddef>
+#include <iterator>
 #include <vector>
 
 namespace rfs{
@@ -162,6 +164,9 @@ public:
    * \return pointer to particle. NULL if index i is invalid
    */
   TParticle* getParticle(uint const i);
+
+  /** Get the hightest weight particle */
+  TParticle* getBestParticle();
 
   /** 
    * Set the effective particle count below which we initiate resampling
@@ -380,6 +385,19 @@ template< class ProcessModel, class MeasurementModel, class ParticleExtraData>
 typename ParticleFilter<ProcessModel, MeasurementModel, ParticleExtraData>::TParticleSet* 
 ParticleFilter<ProcessModel, MeasurementModel, ParticleExtraData>::getParticleSet(){
   return &particleSet_;
+}
+
+template< class ProcessModel, class MeasurementModel, class ParticleExtraData>
+typename ParticleFilter<ProcessModel, MeasurementModel, ParticleExtraData>::TParticle* 
+ParticleFilter<ProcessModel, MeasurementModel, ParticleExtraData>::getBestParticle(){
+  double maxWeight = 0;
+  size_t max_idx = 0 ;
+  for (int i = 0; i < nParticles_; i++) {
+      if (particleSet_[i]->getWeight() > maxWeight) {
+          maxWeight = particleSet_[i]->getWeight();
+      }
+  }
+  return particleSet_[max_idx].get();
 }
 
 template< class ProcessModel, class MeasurementModel, class ParticleExtraData>
