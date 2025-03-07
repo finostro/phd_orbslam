@@ -712,13 +712,15 @@ public:
 
     auto position = best_particle->getPose()->getPos();
     Eigen::Quaterniond orientation(  best_particle->getPose()->getRot());
+    std::cout << "position: " << position.transpose() << "\n";
+    std::cout << "orientation: " << orientation.w() << " " << orientation.x() << " " << orientation.y() << " " << orientation.z() << "\n";
 
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = "map";
     marker.header.stamp = rclcpp::Time(0);
     marker.ns = "frustum";
     marker.id = 0;
-    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose.position.x = position[0];
     marker.pose.position.y = position[1];
@@ -729,42 +731,90 @@ public:
     marker.pose.orientation.w = orientation.w();  
     
     std::vector<gtsam::Point3> frustum_points_in_camera_frame;
-    frustum_points_in_camera_frame.resize(8);
+    std::vector<gtsam::Point3> marker_points;
+
+
+    frustum_points_in_camera_frame.resize(4);
+    
 
     auto measurementModel = pFilter_->getMeasurementModel();
-    gtsam::StereoPoint2 stereopoint(0, 0.01, 0.);
-    std::cout << "stereopoint: " << stereopoint << "\n";
+    gtsam::StereoPoint2 stereopoint(-.99, -1.0, -1.);
+    // std::cout << "camera.baseline: " << measurementModel->config.camera.camera.baseline() << "\n";
+    // std::cout << "camera.calibration: " << measurementModel->config.camera.camera.calibration() << "\n";
+    // std::cout << "stereopoint: " << stereopoint << "\n";
     frustum_points_in_camera_frame[0] = measurementModel->config.camera.camera.backproject(stereopoint);
-    std::cout << "frustum_points_in_camera_frame[0]: " << frustum_points_in_camera_frame[0] << "\n";
     frustum_points_in_camera_frame[0] =
         frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[0].norm());
-    std::cout << "frustum_points_in_camera_frame[0]: " << frustum_points_in_camera_frame[0] << "\n";
-    frustum_points_in_camera_frame[4] =
-        frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[0].norm());
-    std::cout << "frustum_points_in_camera_frame[4]: " << frustum_points_in_camera_frame[4] << "\n";
 
-    stereopoint = gtsam::StereoPoint2(0.99, 0, 1);
+    stereopoint = gtsam::StereoPoint2(1, 0.99, -1.);
     frustum_points_in_camera_frame[1] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[1] =
         frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[1].norm());
-    frustum_points_in_camera_frame[5] =
-        frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[1].norm());
 
-    stereopoint = gtsam::StereoPoint2(0, 1, 0.01);
+    stereopoint = gtsam::StereoPoint2(1, 0.99, 1.0);
     frustum_points_in_camera_frame[2] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[2] =
         frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[2].norm());
-    frustum_points_in_camera_frame[6] =
-        frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[2].norm());
 
-    stereopoint = gtsam::StereoPoint2(0.99, 1, 1.0);
+    stereopoint = gtsam::StereoPoint2(-0.99, -1.0, 1);
     frustum_points_in_camera_frame[3] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[3] =
         frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[3].norm());
-    frustum_points_in_camera_frame[7] =
-        frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[3].norm());
+
+
+    frustum_points_in_camera_frame[4] =
+        frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[0].norm());
+    frustum_points_in_camera_frame[5] = frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[1].norm());
+    frustum_points_in_camera_frame[6] = frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[2].norm());
+    frustum_points_in_camera_frame[7] = frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMax_ / frustum_points_in_camera_frame[3].norm());
+
+    marker_points.push_back(frustum_points_in_camera_frame[0]);
+    marker_points.push_back(frustum_points_in_camera_frame[4]);
+    
+    marker_points.push_back(frustum_points_in_camera_frame[4]);
+    marker_points.push_back(frustum_points_in_camera_frame[5]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[0]);
+    marker_points.push_back(frustum_points_in_camera_frame[1]);
+
+
+    marker_points.push_back(frustum_points_in_camera_frame[1]);
+    marker_points.push_back(frustum_points_in_camera_frame[5]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[5]);
+    marker_points.push_back(frustum_points_in_camera_frame[6]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[1]);
+    marker_points.push_back(frustum_points_in_camera_frame[2]);
+
+
+    marker_points.push_back(frustum_points_in_camera_frame[2]);
+    marker_points.push_back(frustum_points_in_camera_frame[3]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[2]);
+    marker_points.push_back(frustum_points_in_camera_frame[6]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[6]);
+    marker_points.push_back(frustum_points_in_camera_frame[7]);
+
+
+    marker_points.push_back(frustum_points_in_camera_frame[3]);
+    marker_points.push_back(frustum_points_in_camera_frame[0]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[3]);
+    marker_points.push_back(frustum_points_in_camera_frame[7]);
+
+    marker_points.push_back(frustum_points_in_camera_frame[7]);
+    marker_points.push_back(frustum_points_in_camera_frame[4]);
+
+
+
     marker.points.resize(frustum_points_in_camera_frame.size());
+
+
+    std::cout <<  "frustum\n";
     for (size_t  i = 0 ; i < frustum_points_in_camera_frame.size(); i++){
+      std::cout << frustum_points_in_camera_frame[i].transpose() << "\n";
       marker.points[i].x = frustum_points_in_camera_frame[i][0];
       marker.points[i].y = frustum_points_in_camera_frame[i][1];
       marker.points[i].z = frustum_points_in_camera_frame[i][2];

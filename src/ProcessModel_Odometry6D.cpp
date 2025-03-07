@@ -61,11 +61,15 @@ void MotionModel_Odometry6d::step(  Pose6d &s_k,
   /* State at k-1 */
   s_km.getPos(p_km_i_);
   Eigen::Quaterniond q_km_(s_km.getRot());          /* \f[ q_{k-1} \f\] */
+  if(q_km_.squaredNorm() < 1e-6)
+    q_km_ = Eigen::Quaterniond(1,0,0,0);
   TimeStamp t_km=s_km.getTime();
 
   /* Odometry */
   input_k.getPos(dp_k_km_);
   Eigen::Quaterniond q_input_(input_k.getRot());  /* rotation Input */
+  if(q_input_.squaredNorm() < 1e-6)
+    q_input_ = Eigen::Quaterniond(1,0,0,0);
   q_input_.normalize();
 
   /* Step forward */
