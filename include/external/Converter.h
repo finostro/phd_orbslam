@@ -26,8 +26,9 @@
 #include "g2o/types/sba/types_six_dof_expmap.h" // se3 poses
 #include "g2o/types/sim3/types_seven_dof_expmap.h" // se3 poses
 
-#include "sophus/geometry.hpp"
-#include "sophus/sim3.hpp"
+#include <sophus/geometry.hpp>
+#include <sophus/sim3.hpp>
+
 
 namespace ORB_SLAM3
 {

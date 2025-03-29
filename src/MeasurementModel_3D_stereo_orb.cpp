@@ -30,6 +30,7 @@
 
 #include "measurement_models/MeasurementModel_3D_stereo_orb.hpp"
 #include "measurement_models/isInFrustum.hpp"
+#include <boost/none.hpp>
 #include <gtsam/geometry/StereoPoint2.h>
 
 namespace rfs
@@ -96,7 +97,8 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
   Eigen::Matrix<double, 3,6> jacobian_wrt_pose_tmp;
   auto stereopoint =  jacobian_wrt_pose? 
       config.camera.camera.project2(point_in_camera_frame, jacobian_wrt_pose_tmp, jacobian_wrt_lmk):
-      config.camera.camera.project2(point_in_camera_frame, boost::none, jacobian_wrt_lmk);
+      config.camera.camera.project2(point_in_camera_frame, gtsam::OptionalJacobian<3, 6>()
+				    , jacobian_wrt_lmk);
 
   if (jacobian_wrt_pose)
   {

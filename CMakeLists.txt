@@ -78,15 +78,17 @@ FIND_PACKAGE(Sophus REQUIRED)
 FIND_PACKAGE(yaml-cpp REQUIRED)
 
 # GTSAM
-find_package(GTSAM REQUIRED)
-include_directories(${GTSAM_INCLUDE_DIR})
-set(GTSAM_LIBRARIES gtsam)   # TODO: automatic search libs
+find_package(GTSAM 4.3 REQUIRED)
+# include_directories(${GTSAM_INCLUDE_DIR})
+# set(GTSAM_LIBRARIES gtsam)   # TODO: automatic search libs
+message("GTSAM_INCLUDE_DIR = " ${GTSAM_INCLUDE_DIR})
 
-find_package(GTSAMCMakeTools)
-include(GtsamMakeConfigFile)
-include(GtsamBuildTypes)
-include(GtsamTesting)
+# find_package(GTSAMCMakeTools)
+# include(GtsamMakeConfigFile)
+# include(GtsamBuildTypes)
+# include(GtsamTesting)
 
+link_directories(${GTSAM_LIBRARY_DIRS})
 #  Opencv
 find_package(OpenCV 4.4)
 if(NOT OpenCV_FOUND)
@@ -102,8 +104,7 @@ MESSAGE(${OpenCV_VERSION})
     
 
 #ADD_SUBDIRECTORY()
-INCLUDE_DIRECTORIES(include)
-INCLUDE_DIRECTORIES(src)
+# INCLUDE_DIRECTORIES(include)
 INCLUDE_DIRECTORIES(test)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIRS})
@@ -112,6 +113,7 @@ INCLUDE_DIRECTORIES(${PERFTOOLS_INCLUDE_DIRS})
 # INCLUDE_DIRECTORIES(${G2O_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${CSPARSE_INCLUDE_DIR})
 INCLUDE_DIRECTORIES(${OPENCV_INCLUDE_DIRS})
+
 
 ADD_LIBRARY(rfsslam 
   src/TimeStamp.cpp 
@@ -146,21 +148,32 @@ ADD_LIBRARY(rfsslam
   src/external/Converter.cc
   )
   
+target_include_directories(rfsslam PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+                                                 "$<INSTALL_INTERFACE:include>")
+
+ament_target_dependencies(rfsslam Boost OpenCV GTSAM)
+
+target_link_libraries(rfsslam  gtsam Sophus::Sophus   )
   
-TARGET_LINK_LIBRARIES(rfsslam  gtsam ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${Sophus_LIBRARIES} fmt::fmt   )
+# TARGET_LINK_LIBRARIES(rfsslam  gtsam ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${Sophus_LIBRARIES} fmt::fmt   )
 
 
 
 
 ADD_EXECUTABLE(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
 ament_target_dependencies(rbphdslam6dSim_euroc
+GTSAM
 rclcpp
 visualization_msgs
 std_msgs
 sensor_msgs
 tf2
 )
-TARGET_LINK_LIBRARIES(rbphdslam6dSim_euroc  ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   rfsslam ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   )
+
+target_include_directories(rbphdslam6dSim_euroc PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+                                                 "$<INSTALL_INTERFACE:include>")
+
+TARGET_LINK_LIBRARIES(rbphdslam6dSim_euroc  rfsslam ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   gtsam )
 
 
 install(

@@ -39,6 +39,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <filesystem>
+#include <gtsam/geometry/StereoCamera.h>
 #include <memory>
 #include <rclcpp/node_options.hpp>
 #include <sensor_msgs/msg/detail/point_cloud2__struct.hpp>
@@ -680,6 +681,17 @@ public:
     pFilter_->getMeasurementModel()->config.rangeLimMin_ = rangeLimitMin_;
     pFilter_->getMeasurementModel()->config.rangeLimBuffer_ = rangeLimitBuffer_;
 
+    auto camera_params = boost::make_shared<gtsam::Cal3_S2Stereo>(
+        camera_parameters_[0].fx, camera_parameters_[0].fy,
+        0, // 0 skew
+        camera_parameters_[0].cx, camera_parameters_[0].cy,
+        stereo_baseline_);
+
+    gtsam::StereoCamera stereocamera(gtsam::Pose3(), camera_params);
+
+    pFilter_->getMeasurementModel()->config.camera.camera = stereocamera;
+
+
     // configure the Kalman filter for landmark updates
     /* Thresholds not implemented!!
      pFilter_->getKalmanFilter()->config.rangeInnovationThreshold_ = innovationRangeThreshold_;
@@ -734,7 +746,7 @@ public:
     std::vector<gtsam::Point3> marker_points;
 
 
-    frustum_points_in_camera_frame.resize(4);
+    frustum_points_in_camera_frame.resize(8);
     
 
     auto measurementModel = pFilter_->getMeasurementModel();
