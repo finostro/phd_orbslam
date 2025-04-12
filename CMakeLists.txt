@@ -83,10 +83,10 @@ find_package(GTSAM 4.3 REQUIRED)
 # set(GTSAM_LIBRARIES gtsam)   # TODO: automatic search libs
 message("GTSAM_INCLUDE_DIR = " ${GTSAM_INCLUDE_DIR})
 
-# find_package(GTSAMCMakeTools)
-# include(GtsamMakeConfigFile)
-# include(GtsamBuildTypes)
-# include(GtsamTesting)
+find_package(GTSAMCMakeTools)
+include(GtsamMakeConfigFile)
+include(GtsamBuildTypes)
+include(GtsamTesting)
 
 link_directories(${GTSAM_LIBRARY_DIRS})
 #  Opencv
@@ -113,6 +113,9 @@ INCLUDE_DIRECTORIES(${PERFTOOLS_INCLUDE_DIRS})
 # INCLUDE_DIRECTORIES(${G2O_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${CSPARSE_INCLUDE_DIR})
 INCLUDE_DIRECTORIES(${OPENCV_INCLUDE_DIRS})
+
+
+
 
 
 ADD_LIBRARY(rfsslam 
@@ -148,21 +151,22 @@ ADD_LIBRARY(rfsslam
   src/external/Converter.cc
   )
   
+target_include_directories(rfsslam PUBLIC ${GTSAM_INCLUDE_DIRS})
 target_include_directories(rfsslam PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                  "$<INSTALL_INTERFACE:include>")
-
 ament_target_dependencies(rfsslam Boost OpenCV GTSAM)
 
 target_link_libraries(rfsslam  gtsam Sophus::Sophus   )
   
 # TARGET_LINK_LIBRARIES(rfsslam  gtsam ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${Sophus_LIBRARIES} fmt::fmt   )
 
+get_target_property(rfs_slam_include_dirs rfsslam INCLUDE_DIRECTORIES)
+  message(STATUS "rfsslam include dir: ${rfs_slam_include_dirs}")
 
 
 
 ADD_EXECUTABLE(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
 ament_target_dependencies(rbphdslam6dSim_euroc
-GTSAM
 rclcpp
 visualization_msgs
 std_msgs

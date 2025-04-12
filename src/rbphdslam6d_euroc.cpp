@@ -129,6 +129,8 @@ public:
     cfgFileName_ = fileName;
     YAML::Node node = YAML::LoadFile(fileName);
 
+    use_ros_gui_ = node["config"]["use_ros_gui"].as<bool>();
+
     logResultsToFile_ = node["config"]["logging"]["logResultsToFile"].as<bool>();
     logTimingToFile_ = node["config"]["logging"]["logTimingToFile"].as<bool>();
     logDirPrefix_ = node["config"]["logging"]["logDirPrefix"].as<std::string>();
@@ -681,7 +683,7 @@ public:
     pFilter_->getMeasurementModel()->config.rangeLimMin_ = rangeLimitMin_;
     pFilter_->getMeasurementModel()->config.rangeLimBuffer_ = rangeLimitBuffer_;
 
-    auto camera_params = boost::make_shared<gtsam::Cal3_S2Stereo>(
+    auto camera_params = std::make_shared<gtsam::Cal3_S2Stereo>(
         camera_parameters_[0].fx, camera_parameters_[0].fy,
         0, // 0 skew
         camera_parameters_[0].cx, camera_parameters_[0].cy,
