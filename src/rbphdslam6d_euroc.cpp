@@ -39,6 +39,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <filesystem>
+#include <gtsam/base/Matrix.h>
+#include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/StereoCamera.h>
 #include <memory>
 #include <rclcpp/node_options.hpp>
@@ -128,6 +130,8 @@ public:
 
     cfgFileName_ = fileName;
     YAML::Node node = YAML::LoadFile(fileName);
+
+    use_ros_gui_ = node["config"]["use_ros_gui"].as<bool>();
 
     logResultsToFile_ = node["config"]["logging"]["logResultsToFile"].as<bool>();
     logTimingToFile_ = node["config"]["logging"]["logTimingToFile"].as<bool>();
@@ -233,6 +237,7 @@ public:
 
 		camera_parameters_.push_back(params);
 	}
+        
 
 	cv::Mat cvTlr = camera_parameters_[1].cv_c0_to_camera;
 	Sophus::SE3d Tlr = ORB_SLAM3::Converter::toSophusd(cvTlr);
@@ -681,7 +686,7 @@ public:
     pFilter_->getMeasurementModel()->config.rangeLimMin_ = rangeLimitMin_;
     pFilter_->getMeasurementModel()->config.rangeLimBuffer_ = rangeLimitBuffer_;
 
-    auto camera_params = boost::make_shared<gtsam::Cal3_S2Stereo>(
+    auto camera_params = std::make_shared<gtsam::Cal3_S2Stereo>(
         camera_parameters_[0].fx, camera_parameters_[0].fy,
         0, // 0 skew
         camera_parameters_[0].cx, camera_parameters_[0].cy,
@@ -690,6 +695,10 @@ public:
     gtsam::StereoCamera stereocamera(gtsam::Pose3(), camera_params);
 
     pFilter_->getMeasurementModel()->config.camera.camera = stereocamera;
+    pFilter_->getMeasurementModel()->config.camera.bounds.mnMinX = 0;
+    pFilter_->getMeasurementModel()->config.camera.bounds.mnMaxX = camera_parameters_[0].newImSize.width;
+    pFilter_->getMeasurementModel()->config.camera.bounds.mnMinY = 0;
+    pFilter_->getMeasurementModel()->config.camera.bounds.mnMaxY = camera_parameters_[0].newImSize.height;
 
 
     // configure the Kalman filter for landmark updates
@@ -718,14 +727,63 @@ public:
 
   }
 
+  visualization_msgs::msg::Marker makeMeasurementsMarker(std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &Z) {
+    auto best_particle = pFilter_->getBestParticle();
+
+    auto position = best_particle->getPose()->getPos();
+    Eigen::Quaterniond orientation(  best_particle->getPose()->getRot());
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = rclcpp::Time(0);
+    marker.ns = "measurements";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = position[0];
+    marker.pose.position.y = position[1];
+    marker.pose.position.z = position[2];
+    marker.pose.orientation.x = orientation.x();
+    marker.pose.orientation.y = orientation.y();
+    marker.pose.orientation.z = orientation.z();
+    marker.pose.orientation.w = orientation.w();  
+    marker.scale.x = 0.1;
+    marker.scale.y = 0.0;
+    marker.scale.z = 0.0;
+    marker.color.a = 1.0;
+    marker.color.r = 0.7;
+    marker.color.g = 0.7;
+    marker.color.b = 0.0;
+
+    marker.points.resize(Z.size()*2);
+    auto measurementModel = pFilter_->getMeasurementModel();
+    for ( size_t i = 0 ; i < Z.size(); i++){
+      marker.points[i*2].x = 0;
+      marker.points[i*2].y = 0;
+      marker.points[i*2].z = 0;
+      gtsam::StereoPoint2 stereopoint(Z[i].get(0), Z[i].get(1), Z[i].get(2));
+      gtsam::Point3 point = measurementModel->config.camera.camera.backproject(stereopoint);
+
+      std::cout << "Z[" << i << "]: " << Z[i].get(0) << " " << Z[i].get(1) << " " << Z[i].get(2) << "\n";
+      std::cout << "point: " << point.x() << " " << point.y() << " " << point.z() << "\n";
+      
+      marker.points[i*2+1].x = point.x();
+      marker.points[i*2+1].y = point.y();
+      marker.points[i*2+1].z = point.z();
+    }
+    
+    std::cout << "published " << Z.size() << " measurements\n";
+    return marker;
+  }
+
   visualization_msgs::msg::Marker makeFrustumMarker() {
 
     auto best_particle = pFilter_->getBestParticle();
 
     auto position = best_particle->getPose()->getPos();
     Eigen::Quaterniond orientation(  best_particle->getPose()->getRot());
-    std::cout << "position: " << position.transpose() << "\n";
-    std::cout << "orientation: " << orientation.w() << " " << orientation.x() << " " << orientation.y() << " " << orientation.z() << "\n";
+    // std::cout << "position: " << position.transpose() << "\n";
+    // std::cout << "orientation: " << orientation.w() << " " << orientation.x() << " " << orientation.y() << " " << orientation.z() << "\n";
 
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = "map";
@@ -750,25 +808,28 @@ public:
     
 
     auto measurementModel = pFilter_->getMeasurementModel();
-    gtsam::StereoPoint2 stereopoint(-.99, -1.0, -1.);
-    // std::cout << "camera.baseline: " << measurementModel->config.camera.camera.baseline() << "\n";
-    // std::cout << "camera.calibration: " << measurementModel->config.camera.camera.calibration() << "\n";
-    // std::cout << "stereopoint: " << stereopoint << "\n";
+    // gtsam::StereoPoint2 stereopoint(-.99, -1.0, -1.);
+    gtsam::StereoPoint2 stereopoint(measurementModel->config.camera.bounds.mnMinX+1, measurementModel->config.camera.bounds.mnMinY, measurementModel->config.camera.bounds.mnMinY);
+    std::cout << "camera.baseline: " << measurementModel->config.camera.camera.baseline() << "\n";
+    std::cout << "camera.calibration: " << measurementModel->config.camera.camera.calibration() << "\n";
+    std::cout << "stereopoint: " << stereopoint << "\n";
     frustum_points_in_camera_frame[0] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[0] =
         frustum_points_in_camera_frame[0] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[0].norm());
 
-    stereopoint = gtsam::StereoPoint2(1, 0.99, -1.);
+    stereopoint = gtsam::StereoPoint2(measurementModel->config.camera.bounds.mnMaxX, measurementModel->config.camera.bounds.mnMaxX-1, measurementModel->config.camera.bounds.mnMinY);
     frustum_points_in_camera_frame[1] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[1] =
         frustum_points_in_camera_frame[1] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[1].norm());
 
-    stereopoint = gtsam::StereoPoint2(1, 0.99, 1.0);
+    // stereopoint = gtsam::StereoPoint2(1, 0.99, 1.0);
+    stereopoint = gtsam::StereoPoint2(measurementModel->config.camera.bounds.mnMaxX, measurementModel->config.camera.bounds.mnMaxX-1, measurementModel->config.camera.bounds.mnMaxY);
     frustum_points_in_camera_frame[2] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[2] =
         frustum_points_in_camera_frame[2] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[2].norm());
 
-    stereopoint = gtsam::StereoPoint2(-0.99, -1.0, 1);
+    // stereopoint = gtsam::StereoPoint2(-0.99, -1.0, 1);
+    stereopoint = gtsam::StereoPoint2(measurementModel->config.camera.bounds.mnMinX+1, measurementModel->config.camera.bounds.mnMinY, measurementModel->config.camera.bounds.mnMaxY);
     frustum_points_in_camera_frame[3] = measurementModel->config.camera.camera.backproject(stereopoint);
     frustum_points_in_camera_frame[3] =
         frustum_points_in_camera_frame[3] * (measurementModel->config.rangeLimMin_ / frustum_points_in_camera_frame[3].norm());
@@ -821,15 +882,15 @@ public:
 
 
 
-    marker.points.resize(frustum_points_in_camera_frame.size());
+    marker.points.resize(marker_points.size());
 
 
     std::cout <<  "frustum\n";
-    for (size_t  i = 0 ; i < frustum_points_in_camera_frame.size(); i++){
-      std::cout << frustum_points_in_camera_frame[i].transpose() << "\n";
-      marker.points[i].x = frustum_points_in_camera_frame[i][0];
-      marker.points[i].y = frustum_points_in_camera_frame[i][1];
-      marker.points[i].z = frustum_points_in_camera_frame[i][2];
+    for (size_t  i = 0 ; i < marker_points.size(); i++){
+      std::cout << marker_points[i].transpose() << "\n";
+      marker.points[i].x = marker_points[i][0];
+      marker.points[i].y = marker_points[i][1];
+      marker.points[i].z = marker_points[i][2];
     }
 
     marker.scale.x = 0.1;
@@ -841,6 +902,7 @@ public:
     marker.color.b = 0.0;
     return marker;
   }
+
   std::unique_ptr<sensor_msgs::msg::PointCloud2> makeRosPointcloud(){
 
     auto best_particle = pFilter_->getBestParticle();
@@ -896,9 +958,10 @@ public:
     return std::move(pointcloud_msg);
   }
 
-  std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(){
+  std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &Z){
     auto marker_array_msg = std::make_unique<visualization_msgs::msg::MarkerArray>();
     marker_array_msg->markers.push_back(makeFrustumMarker());
+    marker_array_msg->markers.push_back(makeMeasurementsMarker(Z));
     
     return std::move(marker_array_msg);
   }
@@ -1355,6 +1418,8 @@ public:
           break;
       }
       std::cout << "number of measurements: " << Z.size() << "\n";
+      
+      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy  = Z;
 
       ////////// Update Step //////////
       pFilter_->update(Z);
@@ -1397,8 +1462,9 @@ public:
       if (use_ros_gui_) {
 
 
-	marker_pub_->publish(makeRosMarkerArray());
+	marker_pub_->publish(makeRosMarkerArray(Z_copy));
 	landmark_cloud_pub_->publish(makeRosPointcloud());
+
 	
 
 	
