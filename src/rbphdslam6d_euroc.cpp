@@ -30,12 +30,16 @@
  */
 
 #include "GaussianGenerators.hpp"
+#include "Landmark.hpp"
 #include "ORB.hpp"
 #include "ProcessModel_Odometry6D.hpp"
 #include "RBPHDFilter.hpp"
 #include "external/argparse.hpp"
+#include "geometry_msgs/msg/point.hpp"
+#include "geometry_msgs/msg/pose_array.hpp"
 #include "measurement_models/MeasurementModel_3D_stereo_orb.hpp"
 #include "misc/EigenYamlSerialization.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 #include <boost/graph/visitors.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -52,10 +56,10 @@
 #include <stdio.h>
 #include <string>
 #include <sys/ioctl.h>
+#include <vector>
 #include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "opencv2/imgproc.hpp"
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
@@ -71,6 +75,7 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 
 #ifdef _PERFTOOLS_CPU
 #include <gperftools/profiler.h>
@@ -119,15 +124,6 @@ class Simulator_RBPHDSLAM_6d {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  Simulator_RBPHDSLAM_6d() { pFilter_ = NULL; }
-
-  ~Simulator_RBPHDSLAM_6d() {
-
-    if (pFilter_ != NULL) {
-      delete pFilter_;
-    }
-  }
-
   /** Read the simulator configuration file */
   bool readConfigFile(const char *fileName) {
 
@@ -145,8 +141,8 @@ public:
 
     // use_gui_ = node["config"]["use_gui"].as<bool>();
     kMax_ = node["config"]["timesteps"].as<int>();
-    // dT_ = node["config"]["sec_per_timestep"].as<double>();
-    // dTimeStamp_ = TimeStamp(dT_);
+    dT_ = node["config"]["sec_per_timestep"].as<double>();
+    dTimeStamp_ = TimeStamp(dT_);
 
     nSegments_ = node["config"]["trajectory"]["nSegments"].as<int>();
     max_dx_ = node["config"]["trajectory"]["max_dx_per_sec"].as<double>();
@@ -187,6 +183,7 @@ public:
     pNoiseInflation_ =
         node["config"]["filter"]["predict"]["processNoiseInflationFactor"]
             .as<double>();
+
     birthGaussianWeight_ =
         node["config"]["filter"]["predict"]["birthGaussianWeight"].as<double>();
 
@@ -268,7 +265,8 @@ public:
       camera_parameters_.push_back(params);
     }
 
-    std::cout << "cv_c0_to_camera_eigen: " << camera_parameters_[1].cv_c0_to_camera_eigen << "\n";
+    std::cout << "cv_c0_to_camera_eigen: "
+              << camera_parameters_[1].cv_c0_to_camera_eigen << "\n";
     cv::Mat cvTlr = camera_parameters_[1].cv_c0_to_camera;
     std::cout << "cvTlr: " << cvTlr << "\n";
     Sophus::SE3d Tlr = ORB_SLAM3::Converter::toSophusd(cvTlr);
@@ -308,7 +306,7 @@ public:
         camera_parameters_[1].opencv_distort_coeffs, R_r2_u2,
         P2.rowRange(0, 3).colRange(0, 3), camera_parameters_[1].newImSize,
         CV_32F, camera_parameters_[1].M1, camera_parameters_[1].M2);
-    
+
     std::cout << "P1: " << P1 << "\n";
     std::cout << "P2: " << P2 << "\n";
 
@@ -404,17 +402,19 @@ public:
   // 			double dy = (drand48() * max_dy_ * 2 - max_dy_) * dT_;
   // 			double dz = (drand48() * max_dz_ * 2 - max_dz_) * dT_;
   // 			double dqx = (drand48() * max_dqx_ * 2 - max_dqx_) *
-  // dT_; 			double dqy = (drand48() * max_dqy_ * 2 - max_dqy_) * dT_; 			double dqz =
-  // (drand48() * max_dqz_ * 2 - max_dqz_) * dT_; 			double dqw = 1+(drand48() *
-  // max_dqw_ * 2 - max_dqw_) * dT_;
+  // dT_; 			double dqy = (drand48() * max_dqy_ * 2 -
+  // max_dqy_) * dT_; 			double dqz = (drand48() * max_dqz_ * 2 -
+  // max_dqz_) * dT_; 			double dqw = 1+(drand48() * max_dqw_ * 2
+  // - max_dqw_) * dT_;
   //
   // 			MotionModel_Odometry6d::TInput::Vec d;
   // 			MotionModel_Odometry6d::TInput::Vec dCovDiag;
   // 			d << dx, dy, dz, dqx, dqy, dqz, dqw;
   //
   // 			dCovDiag << Q(0, 0), Q(1, 1), Q(2, 2), Q(3, 3), Q(4, 4),
-  // Q(5, 					5), Q(6, 6); 			input_k = MotionModel_Odometry6d::TInput(d,
-  // 					dCovDiag.asDiagonal(), k);
+  // Q(5, 					5), Q(6, 6);
+  // input_k = MotionModel_Odometry6d::TInput(d,
+  // dCovDiag.asDiagonal(), k);
   // 		}
   //
   // 		groundtruth_displacement_.push_back(input_k);
@@ -461,8 +461,10 @@ public:
   // 		double dt = dTimeStamp_.getTimeAsDouble();
   //
   // 		MotionModel_Odometry6d::TInput in =
-  // groundtruth_displacement_[k]; 		MotionModel_Odometry6d::TState::Mat Qk = Q *
-  // dt * dt; 		in.setCov(Qk); 		MotionModel_Odometry6d::TInput out; 		in.sample(out);
+  // groundtruth_displacement_[k];
+  // MotionModel_Odometry6d::TState::Mat Qk = Q * dt * dt;
+  // in.setCov(Qk); 		MotionModel_Odometry6d::TInput out;
+  // in.sample(out);
   //
   // 		odometry_.push_back(out);
   //
@@ -588,8 +590,8 @@ public:
   // 			do {
   // 				for (int i = 0; i < z.size(); i++)
   // 					z(i) = drand48() * 2 * rangeLimitMax_ -
-  // rangeLimitMax_; 			} while (z.norm() < rangeLimitMax_ && z.norm() >
-  // rangeLimitMin_);
+  // rangeLimitMax_; 			} while (z.norm() < rangeLimitMax_ &&
+  // z.norm() > rangeLimitMin_);
   //
   // 			z_clutter.set(z, t);
   // 			measurements_.push_back(z_clutter);
@@ -601,7 +603,8 @@ public:
   // }
 
   /** Data Logging */
-  void exportSimData() {
+
+  void initLogFiles() {
 
     if (logResultsToFile_ || logTimingToFile_) {
       std::filesystem::path dir(logDirPrefix_);
@@ -618,80 +621,106 @@ public:
     if (!logResultsToFile_)
       return;
 
-    TimeStamp t;
-    //
-    // FILE* pGTPoseFile;
-    // std::string filenameGTPose(logDirPrefix_);
-    // filenameGTPose += "gtPose.dat";
-    // pGTPoseFile = fopen(filenameGTPose.data(), "w");
-    // MotionModel_Odometry6d::TState::Vec x;
-    // for (int i = 0; i < groundtruth_pose_.size(); i++) {
-    // 	groundtruth_pose_[i].get(x, t);
-    // 	fprintf(pGTPoseFile, "%f   %f   %f   %f   %f   %f   %f   %f\n",
-    // 			t.getTimeAsDouble(), x(0), x(1), x(2), x(3), x(4), x(5),
-    // 			x(6));
-    // }
-    // fclose(pGTPoseFile);
-    //
-    // FILE* pGTLandmarkFile;
-    // std::string filenameGTLandmark(logDirPrefix_);
-    // filenameGTLandmark += "gtLandmark.dat";
-    // pGTLandmarkFile = fopen(filenameGTLandmark.data(), "w");
-    // MeasurementModel_3D_stereo_orb::TLandmark::Vec m;
-    // for (int i = 0; i < groundtruth_landmark_.size(); i++) {
-    // 	groundtruth_landmark_[i].get(m);
-    // 	fprintf(pGTLandmarkFile, "%f   %f   %f   %f\n", m(0), m(1), m(2),
-    // 			lmkFirstObsTime_[i]);
-    // }
-    // fclose(pGTLandmarkFile);
-
-    FILE *pOdomFile;
     std::string filenameOdom(logDirPrefix_);
     filenameOdom += "odometry.dat";
-    pOdomFile = fopen(filenameOdom.data(), "w");
-    MotionModel_Odometry6d::TInput::Vec u;
-    for (int i = 0; i < odometry_.size(); i++) {
-      odometry_[i].get(u, t);
-      fprintf(pOdomFile, "%f   %f   %f   %f   %f   %f   %f   %f\n",
-              t.getTimeAsDouble(), u(0), u(1), u(2), u(3), u(4), u(5), u(6));
-    }
-    fclose(pOdomFile);
+    pOdomFile_ = std::make_unique<std::ofstream>(filenameOdom);
 
-    FILE *pMeasurementFile;
     std::string filenameMeasurement(logDirPrefix_);
     filenameMeasurement += "measurement.dat";
-    pMeasurementFile = fopen(filenameMeasurement.data(), "w");
-    MeasurementModel_3D_stereo_orb::TMeasurement::Vec z;
-    for (int i = 0; i < measurements_.size(); i++) {
-      measurements_[i].get(z, t);
-      fprintf(pMeasurementFile, "%f   %f   %f   %f\n", t.getTimeAsDouble(),
-              z(0), z(1), z(2));
-    }
-    fclose(pMeasurementFile);
+    pMeasurementFile_ = std::make_unique<std::ofstream>(filenameMeasurement);
 
-    FILE *pDeadReckoningFile;
     std::string filenameDeadReckoning(logDirPrefix_);
     filenameDeadReckoning += "deadReckoning.dat";
-    pDeadReckoningFile = fopen(filenameDeadReckoning.data(), "w");
-    MotionModel_Odometry6d::TState::Vec odo;
-    for (int i = 0; i < deadReckoning_pose_.size(); i++) {
-      deadReckoning_pose_[i].get(odo, t);
-      fprintf(pDeadReckoningFile, "%f   %f   %f   %f   %f   %f   %f   %f\n",
-              t.getTimeAsDouble(), odo(0), odo(1), odo(2), odo(3), odo(4),
-              odo(5), odo(6));
+    pDeadReckoningFile_ =
+        std::make_unique<std::ofstream>(filenameDeadReckoning);
+
+    std::string filenameParticlePoseFile(logDirPrefix_);
+    filenameParticlePoseFile += "particlePose.dat";
+    pParticlePoseFile_ =
+        std::make_unique<std::ofstream>(filenameParticlePoseFile);
+
+    std::string filenameLandmarkEstFile(logDirPrefix_);
+    filenameLandmarkEstFile += "landmarkEst.dat";
+    pLandmarkEstFile_ =
+        std::make_unique<std::ofstream>(filenameLandmarkEstFile);
+  }
+
+  void exportSimData(int ni) {
+
+    TimeStamp t;
+
+
+    MotionModel_Odometry6d::TInput::Vec u;
+    if (ni < odometry_.size()) {
+      *pOdomFile_  << odometry_[ni] << "\n";
     }
-    fclose(pDeadReckoningFile);
+
+    MeasurementModel_3D_stereo_orb::TMeasurement::Vec z;
+
+    if (ni < measurements_.size()) {
+      for (auto &measurement : measurements_[ni]) {
+        measurement.get(z, t);
+        *pMeasurementFile_ << t.getTimeAsDouble();
+        for (auto zi : z) {
+          *pMeasurementFile_ << "   " << zi;
+        }
+        *pMeasurementFile_ << "\n";
+      }
+
+      MotionModel_Odometry6d::TState::Vec odo;
+      if (ni < deadReckoning_pose_.size()) {
+        deadReckoning_pose_[ni].get(odo, t);
+        *pDeadReckoningFile_ << t.getTimeAsDouble();
+        for (auto oi : odo) {
+          *pDeadReckoningFile_ << "   " << oi;
+        }
+        *pDeadReckoningFile_ << "\n";
+      }
+    }
+
+    // Log particle poses
+    int i_w_max = 0;
+    double w_max = 0;
+    if (logResultsToFile_) {
+      for (int i = 0; i < pFilter_->getParticleCount(); i++) {
+        auto x_i = *pFilter_->getParticleSet()->at(i)->getPose();
+        double w = pFilter_->getParticleSet()->at(i)->getWeight();
+        if (w > w_max) {
+          i_w_max = i;
+          w_max = w;
+        }
+        *pParticlePoseFile_ << x_i << "\n";
+      }
+      *pParticlePoseFile_ << "\n";
+
+    // Log landmark estimates
+
+      int mapSize = pFilter_->getGMSize(i_w_max);
+      for (int m = 0; m < mapSize; m++) {
+        MeasurementModel_3D_stereo_orb::TLandmark::Vec u;
+        MeasurementModel_3D_stereo_orb::TLandmark::Mat S;
+        double w;
+
+
+        *pLandmarkEstFile_ << t.getTimeAsDouble() << "   " << i_w_max << "   "<< u << "   " << S << "   " << w << "\n";
+        // fprintf(pLandmarkEstFile, "%f   %d   ", time.getTimeAsDouble(),
+        //         i_w_max);
+        // fprintf(pLandmarkEstFile, "%f   %f   %f      ", u(0), u(1), u(2));
+        // fprintf(pLandmarkEstFile, "%f   %f   %f   %f   %f   %f", S(0, 0),
+        //         S(0, 1), S(0, 2), S(1, 1), S(1, 2), S(2, 2));
+        // fprintf(pLandmarkEstFile, "   %f\n", w);
+      }
+    }
   }
 
   /** RB-PHD Filter Setup */
   void setupRBPHDFilter() {
 
-    pFilter_ =
-        new RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
-                        MeasurementModel_3D_stereo_orb,
-                        KalmanFilter<StaticProcessModel<Landmark3d>,
-                                     MeasurementModel_3D_stereo_orb>>(
-            nParticles_);
+    pFilter_ = std::make_unique<
+        RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
+                    MeasurementModel_3D_stereo_orb,
+                    KalmanFilter<StaticProcessModel<Landmark3d>,
+                                 MeasurementModel_3D_stereo_orb>>>(nParticles_);
 
     double dt = dTimeStamp_.getTimeAsDouble();
 
@@ -707,6 +736,7 @@ public:
     Q(5, 5) = vardqz_;
     Q(6, 6) = vardqw_;
     Q *= (pNoiseInflation_ * dt * dt);
+    // std::cout << "process model covariance " << Q <<"\n";
     pFilter_->getProcessModel()->setNoise(Q);
 
     // configure landmark process model (only need to set once since timesteps
@@ -772,6 +802,7 @@ public:
 
     // Visualization
     if (use_ros_gui_) {
+        particle_poses_pub_ = visualization_node_->create_publisher<geometry_msgs::msg::PoseArray>("particle_poses", 10);
       marker_pub_ =
           visualization_node_
               ->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -817,14 +848,14 @@ public:
       marker.points[i * 2].x = 0;
       marker.points[i * 2].y = 0;
       marker.points[i * 2].z = 0;
-      gtsam::StereoPoint2 stereopoint(Z[i].get(0), Z[i].get(1), Z[i].get(2));
+      gtsam::StereoPoint2 stereopoint(Z[i].get());
       gtsam::Point3 point =
           measurementModel->config.camera.camera.backproject(stereopoint);
 
-      std::cout << "Z[" << i << "]: " << Z[i].get(0) << " " << Z[i].get(1)
-                << " " << Z[i].get(2) << "\n";
-      std::cout << "point: " << point.x() << " " << point.y() << " "
-                << point.z() << "\n";
+      // std::cout << "Z[" << i << "]: " << Z[i].get(0) << " " << Z[i].get(1)
+      //           << " " << Z[i].get(2) << "\n";
+      // std::cout << "point: " << point.x() << " " << point.y() << " "
+      //           << point.z() << "\n";
 
       marker.points[i * 2 + 1].x = point.x();
       marker.points[i * 2 + 1].y = point.y();
@@ -835,6 +866,37 @@ public:
     return marker;
   }
 
+  visualization_msgs::msg::Marker makeTrajectoryMarker(int n){
+
+      auto p = pFilter_->getParticle(n);
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = "map";
+      marker.header.stamp = rclcpp::Time(0);
+      marker.ns = "particle_trajectories";
+      marker.id = n;
+      marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      marker.action = visualization_msgs::msg::Marker::ADD;
+
+      geometry_msgs::msg::Point pt;
+      pt.x = p->get(0);
+      pt.y = p->get(1);
+      pt.z = p->get(2);
+      marker.points.push_back(pt);
+      auto ptr = p->prev;
+     while (ptr){
+
+         pt.x = ptr->get(0);
+         pt.y = ptr->get(1);
+         pt.z = ptr->get(2);
+         marker.points.emplace_back(pt);
+         ptr = ptr->prev;
+
+      }
+
+
+     return marker;
+  }
+
   visualization_msgs::msg::Marker makeFrustumMarker() {
 
     auto best_particle = pFilter_->getBestParticle();
@@ -842,7 +904,8 @@ public:
     auto position = best_particle->getPose()->getPos();
     Eigen::Quaterniond orientation(best_particle->getPose()->getRot());
     // std::cout << "position: " << position.transpose() << "\n";
-    // std::cout << "orientation: " << orientation.w() << " " << orientation.x()
+    // std::cout << "orientation: " << orientation.w() << " " <<
+    // orientation.x()
     // << " " << orientation.y() << " " << orientation.z() << "\n";
 
     visualization_msgs::msg::Marker marker;
@@ -869,7 +932,7 @@ public:
     // gtsam::StereoPoint2 stereopoint(-.99, -1.0, -1.);
     gtsam::StereoPoint2 stereopoint(
         measurementModel->config.camera.bounds.mnMinX + 1,
-        measurementModel->config.camera.bounds.mnMinY,
+        measurementModel->config.camera.bounds.mnMinX,
         measurementModel->config.camera.bounds.mnMinY);
     std::cout << "camera.baseline: "
               << measurementModel->config.camera.camera.baseline() << "\n";
@@ -909,7 +972,7 @@ public:
     // stereopoint = gtsam::StereoPoint2(-0.99, -1.0, 1);
     stereopoint =
         gtsam::StereoPoint2(measurementModel->config.camera.bounds.mnMinX + 1,
-                            measurementModel->config.camera.bounds.mnMinY,
+                            measurementModel->config.camera.bounds.mnMinX,
                             measurementModel->config.camera.bounds.mnMaxY);
     frustum_points_in_camera_frame[3] =
         measurementModel->config.camera.camera.backproject(stereopoint);
@@ -991,9 +1054,47 @@ public:
     return marker;
   }
 
+    void addLandmarksMarkers(std::vector<visualization_msgs::msg::Marker> &markers){
+
+
+    auto best_particle = pFilter_->getBestParticle();
+    auto gaussian_mixture = best_particle->getData();
+    int num_gaussians = gaussian_mixture->getGaussianCount();
+    int num_points = 0;
+
+    for (int i = 0; i < num_gaussians; i++) {
+      auto weight = gaussian_mixture->getWeight(i);
+      if (weight == 0)
+        continue;
+
+      num_points++;
+    }
+
+    markers.reserve(markers.size() + num_points);
+
+
+
+    int np = 0;
+    for (int i = 0; i < num_gaussians; i++) {
+      auto weight = gaussian_mixture->getWeight(i);
+      if (weight == 0)
+        continue;
+      auto marker = to_marker(*gaussian_mixture->getGaussian(i));
+      marker.id = np;
+      markers.push_back(std::move(marker));
+
+      np++;
+    }
+
+
+
+  
+    }
+
   std::unique_ptr<sensor_msgs::msg::PointCloud2> makeRosPointcloud() {
 
     auto best_particle = pFilter_->getBestParticle();
+        std::cout << "bestparticle :  " << best_particle->getId();
     auto gaussian_mixture = best_particle->getData();
     int num_gaussians = gaussian_mixture->getGaussianCount();
     int num_points = 0;
@@ -1031,15 +1132,33 @@ public:
         continue;
 
       auto mean = gaussian_mixture->getGaussian(i)->get();
-      iter_x[np] = mean.x();
-      iter_y[np] = mean.y();
-      iter_z[np] = mean.z();
-      iter_intensity[np] = weight;
+      std::cout << "adding point " << *gaussian_mixture->getGaussian(i)<< "\n";
+      *iter_x = mean.x();
+      *iter_y = mean.y();
+      *iter_z = mean.z();
+      *iter_intensity = weight;
+      ++iter_x;
+      ++iter_y;
+      ++iter_z;
+      ++iter_intensity;
+
 
       np++;
     }
 
     return std::move(pointcloud_msg);
+  }
+  std::unique_ptr<geometry_msgs::msg::PoseArray> makeParticlePosesMsg(){
+      auto particle_set = pFilter_->getParticleSet();
+auto poses = std::make_unique<geometry_msgs::msg::PoseArray>();
+poses->header.frame_id = "map";
+poses->poses.reserve(particle_set->size());
+for (auto &p: *particle_set){
+    poses->poses.push_back(p->toMsg());
+
+}
+
+return poses;
   }
 
   std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(
@@ -1048,6 +1167,12 @@ public:
         std::make_unique<visualization_msgs::msg::MarkerArray>();
     marker_array_msg->markers.push_back(makeFrustumMarker());
     marker_array_msg->markers.push_back(makeMeasurementsMarker(Z));
+    for (int i =0; i< pFilter_->getParticleCount() ; i++){
+        marker_array_msg->markers.push_back(makeTrajectoryMarker(i));
+    }
+
+    addLandmarksMarkers(marker_array_msg->markers);
+    
 
     return std::move(marker_array_msg);
   }
@@ -1066,8 +1191,8 @@ public:
       MeasurementModel_3D_stereo_orb::TMeasurement measurement;
       MeasurementModel_3D_stereo_orb::TMeasurement::Vec z;
       z << keypoints_left[matches_left_to_right[i].queryIdx].pt.x,
-          keypoints_left[matches_left_to_right[i].queryIdx].pt.y,
-          keypoints_right[matches_left_to_right[i].trainIdx].pt.x;
+          keypoints_right[matches_left_to_right[i].trainIdx].pt.x,
+          keypoints_left[matches_left_to_right[i].queryIdx].pt.y;
       measurement.set(z);
       measurement.setTime(time);
       measurements.push_back(measurement);
@@ -1273,7 +1398,32 @@ public:
     }
   }
 
-  void loadEuroc() {
+  void loadEurocAndRun() {
+    MotionModel_Odometry6d::TState zero_pose;
+    zero_pose[6] = 1.0;
+
+    TimeStamp time;
+
+    if (!logResultsToFile_) {
+      std::cout << "Note: results are NOT being logged to file (see config xml "
+                   "file)\n";
+    }
+
+    //////// Initialization at first timestep //////////
+
+    MotionModel_Odometry6d::TState x_i;
+    int zIdx = 0;
+
+    if (logResultsToFile_) {
+      for (int i = 0; i < pFilter_->getParticleCount(); i++) {
+        x_i = *(pFilter_->getParticleSet()->at(i));
+        for (auto &el : x_i.get()) {
+          *pParticlePoseFile_ << el << "   ";
+        }
+        *pParticlePoseFile_ << "1.0\n";
+      }
+    }
+
     std::cout << "loading images\n";
     std::string pathCam0 = eurocFolder_ + "/mav0/cam0/data";
     std::string pathCam1 = eurocFolder_ + "/mav0/cam1/data";
@@ -1292,9 +1442,9 @@ public:
     vstrImageRight.reserve(5000);
     while (!fTimes.eof()) {
 
-      if (!rclcpp::ok()){
-	std::cerr << "ROS shutdown \n";
-	exit(0);
+      if (!rclcpp::ok()) {
+        std::cerr << "ROS shutdown \n";
+        exit(0);
       }
       std::string s;
       std::getline(fTimes, s);
@@ -1341,10 +1491,18 @@ public:
     for (int ni = 0; ni < nImages; ni++) {
       // std::cout << "  loading image " << ni + 1 << "/" << nImages << "\n";
 
-      if (!rclcpp::ok()){
-	std::cerr << "ROS shutdown \n";
-	exit(0);
+      if (!rclcpp::ok()) {
+        std::cerr << "ROS shutdown \n";
+        exit(0);
       }
+      time += dTimeStamp_;
+      pFilter_->predict(odometry_[ni], dTimeStamp_);
+
+      if (ni <= 2) {
+        for (int i = 0; i < nParticles_; i++)
+          pFilter_->setParticlePose(i, zero_pose);
+      }
+
       std::vector<cv::KeyPoint> keypoints_left, keypoints_right;
 
       std::vector<ORBDescriptor> descriptors_left, descriptors_right;
@@ -1387,28 +1545,37 @@ public:
       cv::Mat mask_left, mask_right;
 
       //		std::thread
-      //threadLeft(&ORB_SLAM3::ORBextractor::extract, 				mpORBextractorLeft,
-      //&imLeft_rect, &mask_left, 				&keypoints_left, 				&descriptors_left,
+      // threadLeft(&ORB_SLAM3::ORBextractor::extract,
+      // mpORBextractorLeft, &imLeft_rect, &mask_left,
+      //&keypoints_left, 				&descriptors_left,
       //				&vLapping_left);
       //		std::thread
-      //threadRight(&ORB_SLAM3::ORBextractor::extract, 				mpORBextractorRight,
-      //&imRight_rect, &mask_right, 				&keypoints_right, 				&descriptors_right,
+      // threadRight(&ORB_SLAM3::ORBextractor::extract,
+      // mpORBextractorRight, &imRight_rect, &mask_right,
+      //&keypoints_right, 				&descriptors_right,
       //				&vLapping_right);
       //		threadLeft.join();
       //		threadRight.join();
 
       cv::Mat desc_left, desc_right;
-      ORB_SLAM3::ORBextractor::extract(mpORBextractorLeft, &imLeft_rect,
-                                       &mask_left, &keypoints_left, &desc_left,
-                                       &vLapping_left);
-      ORB_SLAM3::ORBextractor::extract(mpORBextractorRight, &imRight_rect,
-                                       &mask_right, &keypoints_right,
-                                       &desc_right, &vLapping_right);
+
+      auto left_future =
+          std::async(std::launch::async, &ORB_SLAM3::ORBextractor::extract,
+                     mpORBextractorLeft, &imLeft_rect, &mask_left,
+                     &keypoints_left, &desc_left, &vLapping_left);
+      auto right_future =
+          std::async(std::launch::async, ORB_SLAM3::ORBextractor::extract,
+                     mpORBextractorRight, &imRight_rect, &mask_right,
+                     &keypoints_right, &desc_right, &vLapping_right);
+      left_future.get();
+      right_future.get();
       computeStereoMatches(keypoints_left, keypoints_right, desc_left,
                            desc_right, matches_left_to_right);
+      measurements_.push_back(
+          std::vector<MeasurementModel_3D_stereo_orb::TMeasurement>());
       stereoMatchesToMeasurments(keypoints_left, keypoints_right, desc_left,
                                  desc_right, matches_left_to_right,
-                                 measurements_, tframe);
+                                 measurements_[ni], tframe);
 
       // plot stereo matches
       cv::Mat imLeftKeys, imRightKeys, imMatches;
@@ -1421,324 +1588,39 @@ public:
       cv::drawKeypoints(imLeft_rect, keypoints_left, imLeftKeys, kpColor);
       // cv::imshow("left", imLeft);
       // cv::imshow("right", imRight);
-      // cv::imshow("left_rect", imLeft_rect);
-      // cv::imshow("right_rect", imRight_rect);
-      // cv::imshow("matches", imMatches);
+      // cv::imshow("left_rect", imLeftKeys);
+      // cv::imshow("right_rect", imRightKeys);
+      cv::imshow("matches", imMatches);
 
-      // cv::waitKey(0); // Wait for a keystroke in the window
-      
+
+      // Prepare measurement vector for update
+      TimeStamp time = measurements_[ni][0].getTime();
+
+      std::cout << "number of measurements: " << measurements_[ni].size()
+                << "\n";
+
+      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
+          measurements_[ni];
+
+      ////////// Update Step //////////
+      pFilter_->update(measurements_[ni]);
+
+      // Visualization
+      if (use_ros_gui_) {
+
+
+          particle_poses_pub_->publish(makeParticlePosesMsg());
+        marker_pub_->publish(makeRosMarkerArray(Z_copy));
+        landmark_cloud_pub_->publish(makeRosPointcloud());
+      }
       std::cout << ni + 1 << "/" << nImages
                 << "                                   \r";
+        cv::waitKey(0); // Wait for a keystroke in the window
     }
     std::cout << "loaded images\n";
     std::cout << "\n";
   }
 
-  /** Run the simulator */
-  void run() {
-
-    printf("Running simulation\n\n");
-
-    MotionModel_Odometry6d::TState zero_pose;
-#ifdef _PERFTOOLS_CPU
-    std::string perfCPU_file = logDirPrefix_ + "rbphdslam2dSim_cpu.prof";
-    ProfilerStart(perfCPU_file.data());
-#endif
-#ifdef _PERFTOOLS_HEAP
-    std::string perfHEAP_file = logDirPrefix_ + "rbphdslam2dSim_heap.prof";
-    HeapProfilerStart(perfHEAP_file.data());
-#endif
-
-    //////// Initialization at first timestep //////////
-
-    if (!logResultsToFile_) {
-      std::cout << "Note: results are NOT being logged to file (see config xml "
-                   "file)\n";
-    }
-    FILE *pParticlePoseFile;
-    if (logResultsToFile_) {
-      std::string filenameParticlePoseFile(logDirPrefix_);
-      filenameParticlePoseFile += "particlePose.dat";
-      pParticlePoseFile = fopen(filenameParticlePoseFile.data(), "w");
-    }
-    FILE *pLandmarkEstFile;
-    if (logResultsToFile_) {
-      std::string filenameLandmarkEstFile(logDirPrefix_);
-      filenameLandmarkEstFile += "landmarkEst.dat";
-      pLandmarkEstFile = fopen(filenameLandmarkEstFile.data(), "w");
-    }
-    MotionModel_Odometry6d::TState x_i;
-    int zIdx = 0;
-
-    if (logResultsToFile_) {
-      for (int i = 0; i < pFilter_->getParticleCount(); i++) {
-        x_i = *(pFilter_->getParticleSet()->at(i));
-        fprintf(pParticlePoseFile,
-                "%f   %d   %f   %f   %f   %f   %f   %f   %f   1.0\n", 0.0, i,
-                x_i.get(0), x_i.get(1), x_i.get(2), x_i.get(3), x_i.get(4),
-                x_i.get(5), x_i.get(6));
-      }
-    }
-
-    /////////// Run simulator from k = 1 to kMax_ /////////
-
-    TimeStamp time;
-
-    for (int k = 1; k < kMax_; k++) {
-
-      if (!rclcpp::ok()){
-	std::cerr << "ROS shutdown \n";
-	exit(0);
-      }
-      
-      time += dTimeStamp_;
-
-      if (k % 100 == 0 || k == kMax_ - 1) {
-        float progressPercent = float(k + 1) / float(kMax_);
-        int progressBarW = 50;
-        struct winsize ws;
-        if (ioctl(1, TIOCGWINSZ, &ws) >= 0)
-          progressBarW = ws.ws_col - 30;
-        int progressPos = progressPercent * progressBarW;
-        if (progressBarW >= 50) {
-          std::cout << "[";
-          for (int i = 0; i < progressBarW; i++) {
-            if (i < progressPos)
-              std::cout << "=";
-            else if (i == progressPos)
-              std::cout << ">";
-            else
-              std::cout << " ";
-          }
-          std::cout << "] ";
-        }
-        std::cout << "k = " << k << " (" << int(progressPercent * 100.0)
-                  << " %)\r";
-        std::cout.flush();
-      }
-      if (k == kMax_ - 1)
-        std::cout << std::endl << std::endl;
-
-#ifdef _PERFTOOLS_HEAP
-      if (k % 20 == 0)
-        HeapProfilerDump("Timestep interval dump");
-#endif
-
-      ////////// Prediction Step //////////
-
-      // configure robot motion model ( not necessary since in simulation,
-      // timesteps are constant) MotionModel_Odometry2d::TState::Mat Q; Q <<
-      // vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_; Q *= (pNoiseInflation_ * dt *
-      // dt); pFilter_->getProcessModel()->setNoise(Q);
-
-      // configure landmark process model ( not necessary since in simulation,
-      // timesteps are constant) Landmark2d::Mat Q_lm; Q_lm << varlmx_, 0, 0,
-      // varlmy_; Q_lm = Q_lm * dt * dt;
-      // pFilter_->getLmkProcessModel()->setNoise(Q_lm);
-
-      pFilter_->predict(odometry_[k], dTimeStamp_);
-
-      if (k <= 2) {
-        for (int i = 0; i < nParticles_; i++)
-          pFilter_->setParticlePose(i, zero_pose);
-      }
-
-      // Prepare measurement vector for update
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z;
-      TimeStamp time = measurements_[zIdx].getTime();
-      std::cout << "time: " << time.getTimeAsDouble() << "  "
-                << measurements_[zIdx].getTime().getTimeAsDouble() << "\n";
-      std::cout << "equals: " << (measurements_[zIdx].getTime() == time)
-                << "\n";
-      while (measurements_[zIdx].getTime() == time) {
-
-        Z.push_back(measurements_[zIdx]);
-        zIdx++;
-        if (zIdx >= measurements_.size())
-          break;
-      }
-      std::cout << "number of measurements: " << Z.size() << "\n";
-
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy = Z;
-
-      ////////// Update Step //////////
-      pFilter_->update(Z);
-
-      // Log particle poses
-      int i_w_max = 0;
-      double w_max = 0;
-      if (logResultsToFile_) {
-        for (int i = 0; i < pFilter_->getParticleCount(); i++) {
-          x_i = *(pFilter_->getParticleSet()->at(i));
-          double w = pFilter_->getParticleSet()->at(i)->getWeight();
-          if (w > w_max) {
-            i_w_max = i;
-            w_max = w;
-          }
-          fprintf(pParticlePoseFile,
-                  "%f   %d   %f   %f   %f   %f   %f   %f   %f   %f\n",
-                  time.getTimeAsDouble(), i, x_i.get(0), x_i.get(1), x_i.get(2),
-                  x_i.get(3), x_i.get(4), x_i.get(5), x_i.get(6), w);
-        }
-        fprintf(pParticlePoseFile, "\n");
-      }
-
-      // Log landmark estimates
-      if (logResultsToFile_) {
-
-        int mapSize = pFilter_->getGMSize(i_w_max);
-        for (int m = 0; m < mapSize; m++) {
-          MeasurementModel_3D_stereo_orb::TLandmark::Vec u;
-          MeasurementModel_3D_stereo_orb::TLandmark::Mat S;
-          double w;
-          pFilter_->getLandmark(i_w_max, m, u, S, w);
-
-          fprintf(pLandmarkEstFile, "%f   %d   ", time.getTimeAsDouble(),
-                  i_w_max);
-          fprintf(pLandmarkEstFile, "%f   %f   %f      ", u(0), u(1), u(2));
-          fprintf(pLandmarkEstFile, "%f   %f   %f   %f   %f   %f", S(0, 0),
-                  S(0, 1), S(0, 2), S(1, 1), S(1, 2), S(2, 2));
-          fprintf(pLandmarkEstFile, "   %f\n", w);
-        }
-      }
-
-    
-      // Visualization
-      if (use_ros_gui_) {
-
-        marker_pub_->publish(makeRosMarkerArray(Z_copy));
-        landmark_cloud_pub_->publish(makeRosPointcloud());
-      }
-    }
-
-#ifdef _PERFTOOLS_HEAP
-    HeapProfilerStop();
-#endif
-#ifdef _PERFTOOLS_CPU
-    ProfilerStop();
-#endif
-
-    std::cout << "Elapsed Timing Information [nsec]\n";
-    std::cout << std::setw(15) << std::left << "Prediction" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->predict_wall << std::setw(6)
-              << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->predict_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Map Update" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapUpdate_wall << std::setw(6)
-              << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapUpdate_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Map Update (KF)"
-              << std::setw(15) << std::setw(6) << std::right
-              << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapUpdate_kf_wall << std::setw(6)
-              << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapUpdate_kf_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Weighting" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->particleWeighting_wall
-              << std::setw(6) << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->particleWeighting_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Map Merge" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapMerge_wall << std::setw(6)
-              << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapMerge_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Map Prune" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapPrune_wall << std::setw(6)
-              << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->mapPrune_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Resampling" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->particleResample_wall
-              << std::setw(6) << std::left << std::right
-              << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->particleResample_cpu << std::endl;
-    std::cout << std::setw(15) << std::left << "Total" << std::setw(15)
-              << std::setw(6) << std::right << "wall:" << std::setw(15)
-              << pFilter_->getTimingInfo()->predict_wall +
-                     pFilter_->getTimingInfo()->mapUpdate_wall +
-                     pFilter_->getTimingInfo()->particleWeighting_wall +
-                     pFilter_->getTimingInfo()->mapMerge_wall +
-                     pFilter_->getTimingInfo()->mapPrune_wall +
-                     pFilter_->getTimingInfo()->particleResample_wall
-              << std::setw(6) << std::right << "cpu:" << std::setw(15)
-              << pFilter_->getTimingInfo()->predict_cpu +
-                     pFilter_->getTimingInfo()->mapUpdate_cpu +
-                     pFilter_->getTimingInfo()->particleWeighting_cpu +
-                     pFilter_->getTimingInfo()->mapMerge_cpu +
-                     pFilter_->getTimingInfo()->mapPrune_cpu +
-                     pFilter_->getTimingInfo()->particleResample_cpu
-              << std::endl;
-
-    if (logTimingToFile_) {
-      std::ofstream timingFile((logDirPrefix_ + "timing.dat").data());
-      timingFile << "Elapsed Timing Information [nsec]\n";
-      timingFile << std::setw(15) << std::left << "Prediction" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->predict_wall << std::setw(6)
-                 << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->predict_cpu << std::endl;
-      timingFile << std::setw(15) << std::left << "Map Update" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapUpdate_wall << std::setw(6)
-                 << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapUpdate_cpu << std::endl;
-      timingFile << std::setw(15) << std::left << "Map Update (KF)"
-                 << std::setw(15) << std::setw(6) << std::right
-                 << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapUpdate_kf_wall << std::setw(6)
-                 << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapUpdate_kf_cpu << std::endl;
-      timingFile << std::setw(15) << std::left << "Weighting" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->particleWeighting_wall
-                 << std::setw(6) << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->particleWeighting_cpu
-                 << std::endl;
-      timingFile << std::setw(15) << std::left << "Map Merge" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapMerge_wall << std::setw(6)
-                 << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapMerge_cpu << std::endl;
-      timingFile << std::setw(15) << std::left << "Map Prune" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapPrune_wall << std::setw(6)
-                 << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->mapPrune_cpu << std::endl;
-      timingFile << std::setw(15) << std::left << "Resampling" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->particleResample_wall
-                 << std::setw(6) << std::left << std::right
-                 << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->particleResample_cpu
-                 << std::endl;
-      timingFile << std::setw(15) << std::left << "Total" << std::setw(15)
-                 << std::setw(6) << std::right << "wall:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->predict_wall +
-                        pFilter_->getTimingInfo()->mapUpdate_wall +
-                        pFilter_->getTimingInfo()->particleWeighting_wall +
-                        pFilter_->getTimingInfo()->mapMerge_wall +
-                        pFilter_->getTimingInfo()->mapPrune_wall +
-                        pFilter_->getTimingInfo()->particleResample_wall
-                 << std::setw(6) << std::right << "cpu:" << std::setw(15)
-                 << pFilter_->getTimingInfo()->predict_cpu +
-                        pFilter_->getTimingInfo()->mapUpdate_cpu +
-                        pFilter_->getTimingInfo()->particleWeighting_cpu +
-                        pFilter_->getTimingInfo()->mapMerge_cpu +
-                        pFilter_->getTimingInfo()->mapPrune_cpu +
-                        pFilter_->getTimingInfo()->particleResample_cpu
-                 << std::endl;
-      timingFile.close();
-    }
-
-    if (logResultsToFile_) {
-      fclose(pParticlePoseFile);
-      fclose(pLandmarkEstFile);
-    }
-  }
 
 private:
   const char *cfgFileName_;
@@ -1787,15 +1669,18 @@ private:
   double varzx_;
   double varzy_;
   double varzz_;
-  std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> measurements_;
+  std::vector<std::vector<MeasurementModel_3D_stereo_orb::TMeasurement>>
+      measurements_;
 
   // Filters
   KalmanFilter<StaticProcessModel<Landmark3d>, MeasurementModel_3D_stereo_orb>
       kf_;
-  RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
-              MeasurementModel_3D_stereo_orb,
-              KalmanFilter<StaticProcessModel<Landmark3d>,
-                           MeasurementModel_3D_stereo_orb>> *pFilter_;
+  std::unique_ptr<
+      RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
+                  MeasurementModel_3D_stereo_orb,
+                  KalmanFilter<StaticProcessModel<Landmark3d>,
+                               MeasurementModel_3D_stereo_orb>>>
+      pFilter_;
   int nParticles_;
   double pNoiseInflation_;
   double zNoiseInflation_;
@@ -1840,6 +1725,13 @@ private:
   double stereo_baseline_f_;
   double stereo_init_max_depth_;
 
+  // logfiles
+
+  std::unique_ptr<std::ofstream> pOdomFile_;
+  std::unique_ptr<std::ofstream> pMeasurementFile_;
+  std::unique_ptr<std::ofstream> pLandmarkEstFile_;
+  std::unique_ptr<std::ofstream> pParticlePoseFile_;
+  std::unique_ptr<std::ofstream> pDeadReckoningFile_;
   // euroc dataset
 
   // filenames
@@ -1867,6 +1759,8 @@ private:
   std::string eurocFolder_;
   std::string eurocTimestampsFilename_;
 
+  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr
+      particle_poses_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
       marker_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
@@ -1929,25 +1823,21 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Trajectory: " << trajNum << std::endl;
 
-  sim.loadEuroc();
-  sim.exportSimData();
-  sim.setupRBPHDFilter();
-
   if (parser.is_used("seed")) {
     std::cout << "Simulation random seed manually set to: " << seed
               << std::endl;
   } else {
     std::cout << "Simulation random seed set to: " << seed << std::endl;
   }
+
   srand48(seed);
+  sim.initLogFiles();
+  sim.setupRBPHDFilter();
+  sim.loadEurocAndRun();
 
-  // boost::timer::auto_cpu_timer *timer = new boost::timer::auto_cpu_timer(6,
-  // "Simulation run time: %ws\n");
 
-  sim.run();
 
-  // std::cout << "mem use: " << MemProfile::getCurrentRSS() << "(" <<
-  // MemProfile::getPeakRSS() << ")\n"; delete timer;
+
 
   return 0;
 }

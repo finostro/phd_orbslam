@@ -678,6 +678,17 @@ namespace rfs
     }
 
   };
+
+template <class CharT, class Traits, unsigned int nDimension>
+inline std::basic_ostream<CharT, Traits>& operator<<(
+    std::basic_ostream<CharT, Traits>& _os, const RandomVec<nDimension>& _b) {
+  _os << "(";
+    for( double d: _b.get()){
+    _os << d << ",";
+  }
+  _os << ")";
+  return _os;
+}
 /*
   template<unsigned int nDim>
   ::boost::variate_generator< ::boost::mt19937, 

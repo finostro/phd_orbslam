@@ -36,6 +36,9 @@
 
 #include <algorithm>
 #include "RandomVec.hpp"
+#include "visualization_msgs/msg/marker.hpp"
+#include <visualization_msgs/msg/marker.hpp>
+
 
 namespace rfs
 {
@@ -200,6 +203,9 @@ namespace rfs
 
   typedef Landmark< 3, 3 > Landmark3d;
 
+  visualization_msgs::msg::Marker to_marker(const Landmark3d &lm);
+
 }
+
 
 #endif

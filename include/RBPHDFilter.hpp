@@ -546,6 +546,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 
     const unsigned int i = particleIdx;
     const unsigned int nZ = this->measurements_.size();
+    // std::cout << "updatemap nz " <<nZ<<"\n";
     
     int threadnum = 0;
     #ifdef _OPENMP
@@ -1002,6 +1003,7 @@ rfsMeasurementLikelihood( const int particleIdx,
 
 template< class RobotProcessModel, class LmkProcessModel, class MeasurementModel, class KalmanFilter >
 void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFilter >::addBirthGaussians(){
+  std::cout << "adding birth\n";
 
   for(int i = 0; i < this->nParticles_; i++){
 
@@ -1013,7 +1015,9 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
       }
     }
 
+    std::cout << "unused z " << unused_measurements_[i].size() << "\n" ;
     while( unused_measurements_[i].size() > 0){
+
 
       // get measurement
       int unused_idx = unused_measurements_[i].back();
@@ -1054,6 +1058,8 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 	  // add birth landmark to Gaussian mixture (last param = true to allocate mem)
 	  this->particleSet_[i]->getData()->addGaussian( &c, config.birthGaussianWeight_, true);
 
+	  // std::cout << "added gaussian1  "  << c <<"\n";
+
 	}else{
 	  birthGaussians_[i].push_back(c);
 	}
@@ -1061,6 +1067,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
       }  
 
     } // iterate unused measurements end
+
 
     // Check through candidate list to see if any candidates should be made into a real birth Gaussian
     for( typename std::list<BirthGaussianCandidate>::iterator it = birthGaussians_[i].begin();
@@ -1071,8 +1078,10 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 	     nLandmarksInFOV_[i] <= config.birthGaussianCurrentMeasurementCountThreshold_){
 	if(it->nSupportingMeasurements >= config.birthGaussianMeasurementCountThreshold_){
 	  this->particleSet_[i]->getData()->addGaussian( &(*it), config.birthGaussianWeight_, true);
+	  // std::cout << "added gaussian2  "  << *it <<"\n";
 	}else if( nLandmarksInFOV_[i] <= config.birthGaussianCurrentMeasurementCountThreshold_){
 	  this->particleSet_[i]->getData()->addGaussian( &(*it), config.birthGaussianWeight_, true);
+	  // std::cout << "added gaussian3  "  << *it <<"\n";
 	}
 	it = birthGaussians_[i].erase( it );
 	if( it != birthGaussians_[i].end() ){

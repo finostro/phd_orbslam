@@ -80,6 +80,7 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
 
   
 
+  
 
   auto pose_gtsam = to_gtsam(pose);
   auto landmark_gtsam = to_gtsam(landmark);
@@ -106,57 +107,14 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
     jacobian_wrt_pose->block<3,6>(0,0) = jacobian_wrt_pose_tmp;
   }
 
-  Eigen::Vector3d mean, landmarkState;
-  Eigen::Matrix3d H_lmk, landmarkUncertainty, cov;
+  measurement.set( stereopoint.vector());
 
-  Eigen::Vector3d robotPosition;
+  std::cout << "MEASURE: \n";
+  std::cout << "pose: "<<pose << "\n";
+  std::cout << "lm: "<<landmark << "\n";
+  std::cout << "measurement: "<<measurement << "\n";
+  std::cout << "jk: "<< *jacobian_wrt_lmk << "\n";
 
-
-  pose.getPos(robotPosition);
-  landmark.get(landmarkState);
-  Eigen::Quaterniond robotQ(pose.getRot());
-  H_lmk = robotQ.conjugate().toRotationMatrix();
-
- if(jacobian_wrt_lmk)
-  {
-    *jacobian_wrt_lmk = H_lmk*(*jacobian_wrt_lmk);
-  }
-
-  mean= H_lmk * (landmarkState-robotPosition);
-
-
-
-
-  Eigen::Matrix<double, 3, 7> H_robot;
-  Eigen::Matrix<double, 3, 4> H_robotrotation;
-  Eigen::Matrix<double, 7, 7> robotUncertainty;
-  double  range;
-
-  pose.getCov( robotUncertainty);
-  landmark.get(landmarkState,landmarkUncertainty);
-
-  // TODO add robot jacobian and uncertainty
-  assert(robotUncertainty.isApprox(Eigen::Matrix<double, 7,7>::Zero()));
-
-
-  // H_robotrotation <<   0           , 2*mean(2)  , -2*mean(1), 0,
-		//   	  	  	  -2*mean(2)  , 0          ,  2*mean(0), 0,
-		// 			  2*mean(1)   , -2*mean(0) ,  0        , 0; //skew symmetric matrix
-  //
-  // H_robot.block<3,3>(0,0) = -H_lmk;
-  // H_robot.block<3,4>(0,3) = H_robotrotation;
-
-
-  cov = H_lmk * landmarkUncertainty * H_lmk.transpose() ; //+ H_robot * robotUncertainty * H_robot.transpose() + R_;
-  measurement.set(mean, cov);
-
-
-  if(jacobian_wrt_pose != NULL)
-  {
-    std::cerr << "jacobian_wrt_pose not implemented yet" << std::endl;
-    throw std::runtime_error("jacobian_wrt_pose not implemented yet");
-    *jacobian_wrt_pose = H_robot;
-  }
 
   return true;
 }
@@ -169,7 +127,8 @@ void MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
   auto landmark_gtsam = to_gtsam(landmark);
   gtsam::StereoPoint2 stereopoint(measurement.get());
 
-  auto point_in_camera_frame = config.camera.camera.backproject(stereopoint);
+  Eigen::Matrix3d lmk_jacobian;
+  auto point_in_camera_frame = config.camera.camera.backproject2(stereopoint,gtsam::OptionalJacobian<3,6>(), lmk_jacobian);
 
 
   Eigen::Vector3d mean;
@@ -179,16 +138,23 @@ void MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
 
   pose.getPos(robotPosition);
   Eigen::Quaterniond robotQ(pose.getRot());
-  Hinv = robotQ.toRotationMatrix();
+
+  Hinv = robotQ.toRotationMatrix() ;
 
 
   this->getNoise(measurementUncertainty);
 
   mean = Hinv*point_in_camera_frame+robotPosition;
 
+  Hinv = robotQ.toRotationMatrix() * lmk_jacobian;
 
   covariance = Hinv * measurementUncertainty * Hinv.transpose();
   landmark.set( mean, covariance );
+  std::cout << "INV MEASURE: \n";
+  std::cout << "pose: "<<pose << "\n";
+  std::cout << "lm: "<<landmark << "\n";
+  std::cout << "measurement: "<<measurement << "\n";
+  std::cout << "cov: "<< covariance << "\n";
 
 }
 
