@@ -25,8 +25,8 @@ bool isInFrustum(const Landmark3d &landmark, const Pose6d &pose, const Camera &c
 
 bool isInFrustum(const gtsam::Point3 &landmark, const gtsam::Pose3 &pose, const Camera &camera, double * predictedScale){
     gtsam::Point3  point_in_camera_frame = pose.transformTo(landmark);
-            // std::cout <<"point_in_camera_frame   " <<point_in_camera_frame << "\n"
-            //     << "z  " << point_in_camera_frame(2)  << "\n";
+            std::cout <<"point_in_camera_frame   " <<point_in_camera_frame << "\n"
+                << "z  " << point_in_camera_frame(2)  << "\n";
             // check depth
             if (point_in_camera_frame(2) <= 0)
             {

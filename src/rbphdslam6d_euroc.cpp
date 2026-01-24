@@ -1498,6 +1498,21 @@ return poses;
       time += dTimeStamp_;
       pFilter_->predict(odometry_[ni], dTimeStamp_);
 
+      {
+        std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
+            measurements_[ni];
+
+
+        // Visualization
+        if (use_ros_gui_) {
+
+          particle_poses_pub_->publish(makeParticlePosesMsg());
+          landmark_cloud_pub_->publish(makeRosPointcloud());
+        }
+        std::cout << ni + 1 << "/" << nImages
+                  << "                                   \r";
+        cv::waitKey(0); // Wait for a keystroke in the window
+      }
       if (ni <= 2) {
         for (int i = 0; i < nParticles_; i++)
           pFilter_->setParticlePose(i, zero_pose);
@@ -1599,23 +1614,26 @@ return poses;
       std::cout << "number of measurements: " << measurements_[ni].size()
                 << "\n";
 
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
-          measurements_[ni];
+      {
+        std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
+            measurements_[ni];
 
-      ////////// Update Step //////////
-      pFilter_->update(measurements_[ni]);
+        ////////// Update Step //////////
+        pFilter_->update(Z_copy);
 
-      // Visualization
-      if (use_ros_gui_) {
-
+        // Visualization
+        if (use_ros_gui_) {
 
           particle_poses_pub_->publish(makeParticlePosesMsg());
-        marker_pub_->publish(makeRosMarkerArray(Z_copy));
-        landmark_cloud_pub_->publish(makeRosPointcloud());
-      }
-      std::cout << ni + 1 << "/" << nImages
-                << "                                   \r";
+          if (ni > 0) {
+            marker_pub_->publish(makeRosMarkerArray(measurements_[ni - 1]));
+          }
+          landmark_cloud_pub_->publish(makeRosPointcloud());
+        }
+        std::cout << ni + 1 << "/" << nImages
+                  << "                                   \r";
         cv::waitKey(0); // Wait for a keystroke in the window
+      }
     }
     std::cout << "loaded images\n";
     std::cout << "\n";

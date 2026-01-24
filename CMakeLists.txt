@@ -100,18 +100,12 @@ MESSAGE("OPENCV VERSION:")
 MESSAGE(${OpenCV_VERSION})
 
 
-
-
-
-
 #ADD_SUBDIRECTORY()
 # INCLUDE_DIRECTORIES(include)
 INCLUDE_DIRECTORIES(test)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIRS})
-# INCLUDE_DIRECTORIES(${CERES_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${PERFTOOLS_INCLUDE_DIRS})
-# INCLUDE_DIRECTORIES(${G2O_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${CSPARSE_INCLUDE_DIR})
 INCLUDE_DIRECTORIES(${OPENCV_INCLUDE_DIRS})
 
@@ -121,6 +115,7 @@ INCLUDE_DIRECTORIES(${OPENCV_INCLUDE_DIRS})
 
 ADD_LIBRARY(rfsslam
   src/Landmark.cpp
+  src/Pose.cpp
   src/TimeStamp.cpp
   src/Timer.cpp
   src/Frame.cpp
@@ -170,7 +165,7 @@ message(STATUS "rfsslam include dir: ${rfs_slam_include_dirs}")
 
 
 
-ADD_EXECUTABLE(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
+add_executable(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
 ament_target_dependencies(rbphdslam6dSim_euroc
 rclcpp
 visualization_msgs
@@ -183,8 +178,25 @@ tf2
 target_include_directories(rbphdslam6dSim_euroc PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                  "$<INSTALL_INTERFACE:include>")
 
-TARGET_LINK_LIBRARIES(rbphdslam6dSim_euroc  rfsslam ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   gtsam )
+target_link_libraries(rbphdslam6dSim_euroc  rfsslam ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   gtsam )
 
+IF(BUILD_TESTING)
+
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(${PROJECT_NAME}_tests test/tests.cpp)
+  target_include_directories(${PROJECT_NAME}_tests PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+  )
+    ament_target_dependencies(${PROJECT_NAME}_tests 
+    rclcpp
+    visualization_msgs
+    )
+  target_link_libraries(${PROJECT_NAME}_tests ${GTEST_LIBRARIES} ${Boost_LIBRARIES} rfsslam )
+
+
+ENDIF()
 
 install(
   TARGETS rbphdslam6dSim_euroc

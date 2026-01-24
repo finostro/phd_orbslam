@@ -56,12 +56,12 @@ MeasurementModel_3D_stereo_orb::MeasurementModel_3D_stereo_orb(::Eigen::Matrix3d
   config.rangeLimBuffer_ = 0.25;
 }
 
-MeasurementModel_3D_stereo_orb::MeasurementModel_3D_stereo_orb(double Sx, double Sy, double Sz){
+MeasurementModel_3D_stereo_orb::MeasurementModel_3D_stereo_orb(double Su, double Sv, double Sur){
 
   Eigen::Matrix3d covZ;
-  covZ <<  Sx, 0,  0,
-		  0,   Sy, 0,
-		  0,   0,  Sz;
+  covZ <<  Su, 0,  0,
+		  0,   Sv, 0,
+		  0,   0,  Sur;
   setNoise(covZ);
   config.probabilityOfDetection_ = 0.95;
   config.uniformClutterIntensity_ = 0.1;
@@ -87,11 +87,14 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
   gtsam::Point3  point_in_camera_frame = pose_gtsam.transformTo(landmark_gtsam);
 
   bool discard;
-  if(probabilityOfDetection(pose, landmark, discard) <= 0.0)
+  double pd =probabilityOfDetection(pose, landmark, discard);
+  std::cout << "PD: "<< pd << "\n";
+  if( pd <= 0.0)
   {
     return false;
   }
 
+  std::cout << "z: "<< point_in_camera_frame.z() << "\n";
   if (point_in_camera_frame.z() < 0)
     return false;
 
@@ -113,7 +116,16 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
   std::cout << "pose: "<<pose << "\n";
   std::cout << "lm: "<<landmark << "\n";
   std::cout << "measurement: "<<measurement << "\n";
-  std::cout << "jk: "<< *jacobian_wrt_lmk << "\n";
+  if(jacobian_wrt_lmk){
+    std::cout << " lm_jk: "<< *jacobian_wrt_lmk << "\n";
+  }else{
+    std::cout << "lm_jk not given\n";
+  }
+  if(jacobian_wrt_pose){
+    std::cout << " pose_jk: "<< *jacobian_wrt_pose << "\n";
+  }else{
+    std::cout << "pose_jk not given\n";
+  }
 
 
   return true;
@@ -146,9 +158,11 @@ void MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
 
   mean = Hinv*point_in_camera_frame+robotPosition;
 
-  Hinv = robotQ.toRotationMatrix() * lmk_jacobian;
-
-  covariance = Hinv * measurementUncertainty * Hinv.transpose();
+  covariance = lmk_jacobian*measurementUncertainty*lmk_jacobian.transpose();
+  covariance = robotQ.toRotationMatrix()* covariance * robotQ.toRotationMatrix().transpose();
+  // Hinv = robotQ.toRotationMatrix() * lmk_jacobian;
+  //
+  // covariance = Hinv * measurementUncertainty * Hinv.transpose();
   landmark.set( mean, covariance );
   std::cout << "INV MEASURE: \n";
   std::cout << "pose: "<<pose << "\n";
@@ -173,6 +187,7 @@ double MeasurementModel_3D_stereo_orb::probabilityOfDetection( const Pose6d &pos
   diff=landmarkState-robotPose;
 
   range = diff.norm();
+  std::cout << "range: " << range << "isinfrust " << isInFrustum(landmark, pose, config.camera, NULL) << "\n";
 
   if( range <= config.rangeLimMax_ && range >= config.rangeLimMin_ && isInFrustum(landmark, pose, config.camera, NULL)){
     Pd = config.probabilityOfDetection_;
