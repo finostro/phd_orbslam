@@ -546,7 +546,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 
     const unsigned int i = particleIdx;
     const unsigned int nZ = this->measurements_.size();
-    // std::cout << "updatemap nz " <<nZ<<"\n";
+    std::cout << "updatemap nz " <<nZ<<"\n";
     
     int threadnum = 0;
     #ifdef _OPENMP
@@ -558,7 +558,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
     const unsigned int nM = this->particleSet_[i]->getData()->getGaussianCount();
     unused_measurements_[i].clear();  
     nLandmarksInFOV_[i] = 0;  
-    if(nM == 0){ // No existing landmark case -> flag all measurements as unused and go to next particles
+    if(true || nM == 0){ // No existing landmark case -> flag all measurements as unused and go to next particles
       for(int z = 0; z < nZ; z++){
 	unused_measurements_[i].push_back( z );
       }

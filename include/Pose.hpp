@@ -36,9 +36,8 @@
 #define POSE_HPP
 
 #include "RandomVec.hpp"
-#include "geometry_msgs/msg/pose.hpp"
 #include <iostream>
-#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
 namespace rfs {
 
@@ -379,6 +378,11 @@ private:
 };
 
 template<>
+ inline Pose<7, 3, 4>::Pose() {
+  x_[6] = 1.0;
+}
+
+template<>
 inline geometry_msgs::msg::Pose Pose<7, 3, 4>::toMsg() const{
 
     geometry_msgs::msg::Pose msg;
@@ -406,6 +410,8 @@ typedef Pose<7, 3, 4> Pose6d; //< uses quaternions
 typedef Pose<1, 1, 0> Position1d;
 typedef Pose<2, 2, 0> Position2d;
 typedef Pose<3, 3, 0> Position3d;
+
+geometry_msgs::msg::PoseStamped to_msg(const Pose6d &x);
 
 } // namespace rfs
 
