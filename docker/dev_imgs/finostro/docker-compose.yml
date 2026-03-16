@@ -1,0 +1,64 @@
+# ============================================================================
+# Docker Compose Configuration for Sample Collector Robot
+# ============================================================================
+# Docker Compose allows you to define and run multi-container applications.
+# Usage: docker-compose up -d
+
+
+services:
+  # Main robot control container
+  finostro:
+    restart: unless-stopped
+    build:
+      dockerfile: Dockerfile
+      platforms:
+        - "linux/arm64"
+      network: host
+    pull_policy: never
+    image: phd_orbslam:finostro_devel
+    container_name: phd_orbslam_finostro_devel
+    runtime: nvidia
+
+    # Network configuration
+    network_mode: host  # Use host networking for ROS 2 DDS discovery
+    ipc: host
+    pid: host
+
+    # Environment variables
+    environment:
+      TERM: ${TERM}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /root/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+      SSH_AUTH_SOCK: ${SSH_AUTH_SOCK} # Use this path for both Mac and Linux
+  
+
+    # Volume mounts (sync code between host and container)
+    # To enable using graphical applications copy the XAUTHORITY file inside the container
+    # docker cp $XAUTHORITY sample_collector_robot:/root/.Xauthority
+
+    volumes:
+      - ../../../..:${HOME}/ws:rw  # Mount only source code (build artifacts isolated)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.config:${HOME}/.config:ro
+      - /dev:/dev
+      - /tmp:/tmp
+      - /usr/local/zed/resources/:/usr/local/zed/resources/
+      - /usr/local/zed/settings/:/usr/local/zed/settings/
+      - ${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}
+    # Privileges (required for hardware access)
+    privileged: true  # Set to true if you need full hardware access
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

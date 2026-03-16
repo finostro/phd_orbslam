@@ -1,0 +1,42 @@
+# ============================================================================
+# Docker Compose Configuration for phd_orbslam
+# ============================================================================
+# Docker Compose allows you to define and run multi-container applications.
+# Usage: docker-compose up -d
+
+
+services:
+  # Main robot control container
+  finostro_devel:
+    restart: unless-stopped
+    build:
+      dockerfile: Dockerfile
+      target: finostro_dev
+      network: host
+    image: phd_orbslam:finostro_devel
+    container_name: phd_orbslam_opencode
+
+
+    # Environment variables
+    environment:
+      TERM: "tmux-256color"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      DISPLAY: ${DISPLAY}
+      XAUTHORITY: /root/.Xauthority
+      QT_X11_NO_MITSHM: "1"
+  
+
+    # Volume mounts (sync code between host and container)
+    # To enable using graphical applications copy the XAUTHORITY file inside the container
+    # docker cp $XAUTHORITY sample_collector_robot:/root/.Xauthority
+
+    volumes:
+      - ../..:${HOME}/ws:rw  # Mount only source code (build artifacts isolated)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.config:${HOME}/.config:rw
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
