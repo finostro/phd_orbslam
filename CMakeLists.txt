@@ -1,11 +1,10 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-project(phd_orbslam_minimal LANGUAGES CXX C)
+project(phd_orbslam_minimal LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
@@ -71,12 +70,8 @@ find_package(Eigen3 REQUIRED)
 
 find_package(Sophus REQUIRED)
 
-# # G2O
-# FIND_PACKAGE(g2o REQUIRED)
-# FIND_PACKAGE(CSparse REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
-# GTSAM
 find_package(GTSAM 4.3 REQUIRED)
 
 find_package(GTSAMCMakeTools)
@@ -85,7 +80,6 @@ include(GtsamBuildTypes)
 include(GtsamTesting)
 
 link_directories(${GTSAM_LIBRARY_DIRS})
-#  Opencv
 find_package(OpenCV 4.4 REQUIRED)
 
 
