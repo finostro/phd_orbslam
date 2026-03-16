@@ -64,16 +64,12 @@ set(BOOST_COMPONENT_TARGETS
   Boost::graph
   Boost::container
 )
-message(STATUS "Boost targets: ${BOOST_COMPONENT_TARGETS}")
 
 
-# Eigen
 find_package(Eigen3 REQUIRED)
 
-# Google Ceres
 
-# FIND_PACKAGE(Ceres REQUIRED)
-FIND_PACKAGE(Sophus REQUIRED)
+find_package(Sophus REQUIRED)
 
 # # G2O
 # FIND_PACKAGE(g2o REQUIRED)
@@ -82,9 +78,6 @@ find_package(yaml-cpp REQUIRED)
 
 # GTSAM
 find_package(GTSAM 4.3 REQUIRED)
-# include_directories(${GTSAM_INCLUDE_DIR})
-# set(GTSAM_LIBRARIES gtsam)   # TODO: automatic search libs
-message("GTSAM_INCLUDE_DIR = " ${GTSAM_INCLUDE_DIR})
 
 find_package(GTSAMCMakeTools)
 include(GtsamMakeConfigFile)
@@ -95,12 +88,8 @@ link_directories(${GTSAM_LIBRARY_DIRS})
 #  Opencv
 find_package(OpenCV 4.4 REQUIRED)
 
-MESSAGE("OPENCV VERSION:")
-MESSAGE(${OpenCV_VERSION})
 
 
-#ADD_SUBDIRECTORY()
-# INCLUDE_DIRECTORIES(include)
 
 
 
@@ -111,30 +100,16 @@ add_library(rfsslam
   src/Pose.cpp
   src/TimeStamp.cpp
   src/Timer.cpp
-  src/Frame.cpp
-  src/ProcessModel_Odometry1D.cpp
-  src/ProcessModel_Odometry2D.cpp
   src/ProcessModel_Odometry6D.cpp
-  src/ProcessModel_Ackerman2D.cpp
-  src/MeasurementModel_Rng1D.cpp
-  src/MeasurementModel_RngBrg.cpp
-  src/MeasurementModel_RngBrg_amplitude.cpp
-  src/MeasurementModel_XY.cpp
-  src/MeasurementModel_6D.cpp
   src/MeasurementModel_3D_stereo_orb.cpp
   src/isInFrustum.cpp
-  src/MeasurementModel_VictoriaPark.cpp
-  src/KalmanFilter_RngBrg_amplitude.cpp
   src/KalmanFilter.cpp
   src/HungarianMethod.cpp
   src/MurtyAlgorithm.cpp
-  src/BruteForceAssignment.cpp
   src/CostMatrix.cpp
   src/PermutationLexicographic.cpp
-  src/MatrixPermanent.cpp
   src/misc/memProfile.cpp
   src/GaussianGenerators.cpp
-  src/AssociationSampler.cpp
   src/OrbslamMapPoint.cpp
   src/OrbslamPose.cpp
   src/external/ORBextractor.cc
@@ -174,10 +149,8 @@ if(USE_OPENMP AND OpenMP_CXX_FOUND)
   target_link_libraries(rfsslam PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-# TARGET_LINK_LIBRARIES(rfsslam  gtsam ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${Sophus_LIBRARIES} fmt::fmt   )
 
 get_target_property(rfs_slam_include_dirs rfsslam INCLUDE_DIRECTORIES)
-message(STATUS "rfsslam include dir: ${rfs_slam_include_dirs}")
 
 
 

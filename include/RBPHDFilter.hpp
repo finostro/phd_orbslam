@@ -45,9 +45,10 @@
 
 #include "GaussianMixture.hpp"
 #include "KalmanFilter.hpp"
-#include "MurtyAlgorithm.hpp"
 #include "ParticleFilter.hpp"
 #include "PermutationLexicographic.hpp"
+#include "CostMatrix.hpp"
+#include "MurtyAlgorithm.hpp"
 #include "Timer.hpp"
 #include "misc/MemProfile.hpp"
 
