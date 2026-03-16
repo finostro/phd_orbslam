@@ -1,23 +1,23 @@
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
+
+project(phd_orbslam_minimal LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+endif()
 
-
-
-PROJECT(phd_orbslam_minimal)
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
-
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 
 
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
+
+set(MARCH_NATIVE_CONFIGS "$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>")
 
 
 
@@ -33,18 +33,15 @@ find_package(tf2 REQUIRED)
 
 
 # OpenMP
-IF(APPLE AND ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
-    SET(USE_OPENMP OFF) # OpenMP does not yet work with Clang, but hopefully soon
-ELSE()
-    SET(USE_OPENMP ON CACHE BOOL "Use OpenMP to compile multithreaded versions of SLAM algorithms.")
-ENDIF()
-IF(USE_OPENMP)
-    IF("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp=libomp ")
-    ELSE()
-        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp ")
-    ENDIF()
-ENDIF()
+if(APPLE AND ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
+  set(USE_OPENMP_DEFAULT OFF)
+else()
+  set(USE_OPENMP_DEFAULT ON)
+endif()
+option(USE_OPENMP "Use OpenMP to compile multithreaded versions of SLAM algorithms." ${USE_OPENMP_DEFAULT})
+if(USE_OPENMP)
+  find_package(OpenMP)
+endif()
 
 
 #Threads
@@ -57,16 +54,21 @@ find_package(Threads REQUIRED)
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
 # set(Boost_USE_STATIC_RUNTIME ON)
-FIND_PACKAGE(Boost COMPONENTS timer chrono system filesystem graph container REQUIRED )
-MESSAGE("Boost_INCLUDE_DIRS = " ${Boost_INCLUDE_DIRS})
-MESSAGE("Boost_LIBRARIES = " ${Boost_LIBRARIES})
+cmake_policy(SET CMP0167 NEW)
+find_package(Boost CONFIG REQUIRED COMPONENTS timer chrono system filesystem graph container)
+set(BOOST_COMPONENT_TARGETS
+  Boost::timer
+  Boost::chrono
+  Boost::system
+  Boost::filesystem
+  Boost::graph
+  Boost::container
+)
+message(STATUS "Boost targets: ${BOOST_COMPONENT_TARGETS}")
 
-
-# For cmake custom library searches
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 # Eigen
-FIND_PACKAGE(Eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 # Google Ceres
 
@@ -76,7 +78,7 @@ FIND_PACKAGE(Sophus REQUIRED)
 # # G2O
 # FIND_PACKAGE(g2o REQUIRED)
 # FIND_PACKAGE(CSparse REQUIRED)
-FIND_PACKAGE(yaml-cpp REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 # GTSAM
 find_package(GTSAM 4.3 REQUIRED)
@@ -91,10 +93,7 @@ include(GtsamTesting)
 
 link_directories(${GTSAM_LIBRARY_DIRS})
 #  Opencv
-find_package(OpenCV 4.4)
-if(NOT OpenCV_FOUND)
-    message(FATAL_ERROR "OpenCV > 4.4 not found.")
-endif()
+find_package(OpenCV 4.4 REQUIRED)
 
 MESSAGE("OPENCV VERSION:")
 MESSAGE(${OpenCV_VERSION})
@@ -102,18 +101,12 @@ MESSAGE(${OpenCV_VERSION})
 
 #ADD_SUBDIRECTORY()
 # INCLUDE_DIRECTORIES(include)
-INCLUDE_DIRECTORIES(test)
-INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
-INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIRS})
-INCLUDE_DIRECTORIES(${PERFTOOLS_INCLUDE_DIRS})
-INCLUDE_DIRECTORIES(${CSPARSE_INCLUDE_DIR})
-INCLUDE_DIRECTORIES(${OPENCV_INCLUDE_DIRS})
 
 
 
 
 
-ADD_LIBRARY(rfsslam
+add_library(rfsslam
   src/Landmark.cpp
   src/Pose.cpp
   src/TimeStamp.cpp
@@ -148,15 +141,38 @@ ADD_LIBRARY(rfsslam
   src/external/Converter.cc
   )
 
-target_include_directories(rfsslam PUBLIC ${GTSAM_INCLUDE_DIRS})
-target_include_directories(rfsslam PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-                                                 "$<INSTALL_INTERFACE:include>")
-ament_target_dependencies(rfsslam 
-Boost OpenCV GTSAM geometry_msgs
-visualization_msgs
+target_include_directories(rfsslam
+  PUBLIC
+    ${GTSAM_INCLUDE_DIRS}
+    ${OpenCV_INCLUDE_DIRS}
+    ${PERFTOOLS_INCLUDE_DIRS}
+    ${CSPARSE_INCLUDE_DIR}
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:include>"
 )
-
-target_link_libraries(rfsslam  gtsam Sophus::Sophus   )
+target_compile_options(rfsslam PRIVATE "$<${MARCH_NATIVE_CONFIGS}:-march=native>")
+if(TARGET Eigen3::Eigen)
+  target_link_libraries(rfsslam PUBLIC Eigen3::Eigen)
+else()
+  target_include_directories(rfsslam PUBLIC ${EIGEN_INCLUDE_DIRS})
+endif()
+target_link_libraries(rfsslam
+  PUBLIC
+    ${geometry_msgs_TARGETS}
+    ${visualization_msgs_TARGETS}
+    ${OpenCV_LIBS}
+    ${BOOST_COMPONENT_TARGETS}
+    gtsam
+    Sophus::Sophus
+)
+if(TARGET yaml-cpp)
+  target_link_libraries(rfsslam PUBLIC yaml-cpp)
+else()
+  target_link_libraries(rfsslam PUBLIC ${YAML_CPP_LIBRARIES})
+endif()
+if(USE_OPENMP AND OpenMP_CXX_FOUND)
+  target_link_libraries(rfsslam PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # TARGET_LINK_LIBRARIES(rfsslam  gtsam ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${Sophus_LIBRARIES} fmt::fmt   )
 
@@ -166,37 +182,52 @@ message(STATUS "rfsslam include dir: ${rfs_slam_include_dirs}")
 
 
 add_executable(rbphdslam6dSim_euroc src/rbphdslam6d_euroc.cpp)
-ament_target_dependencies(rbphdslam6dSim_euroc
-rclcpp
-visualization_msgs
-geometry_msgs
-std_msgs
-sensor_msgs
-tf2
+
+target_include_directories(rbphdslam6dSim_euroc
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:include>"
+)
+target_compile_options(rbphdslam6dSim_euroc PRIVATE "$<${MARCH_NATIVE_CONFIGS}:-march=native>")
+
+target_link_libraries(rbphdslam6dSim_euroc
+  PUBLIC
+    rfsslam
+    ${geometry_msgs_TARGETS}
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
+    ${visualization_msgs_TARGETS}
+    rclcpp::rclcpp
+    tf2::tf2
+  PRIVATE
+    ${BOOST_COMPONENT_TARGETS}
+    ${YAML_CPP_LIBRARIES}
+    ${Perftools_PROFILER_LIBRARY}
+    ${Perftools_TCMALLOC_LIBRARY}
+    Threads::Threads
+    gtsam
 )
 
-target_include_directories(rbphdslam6dSim_euroc PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-                                                 "$<INSTALL_INTERFACE:include>")
-
-target_link_libraries(rbphdslam6dSim_euroc  rfsslam ${Boost_LIBRARIES} ${YAML_CPP_LIBRARIES}   ${Perftools_PROFILER_LIBRARY} ${Perftools_TCMALLOC_LIBRARY} Threads::Threads   gtsam )
-
-IF(BUILD_TESTING)
+if(BUILD_TESTING)
 
   find_package(ament_cmake_gtest REQUIRED)
 
   ament_add_gtest(${PROJECT_NAME}_tests test/tests.cpp)
   target_include_directories(${PROJECT_NAME}_tests PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/test>
     $<INSTALL_INTERFACE:include>
   )
-    ament_target_dependencies(${PROJECT_NAME}_tests 
-    rclcpp
-    visualization_msgs
-    )
-  target_link_libraries(${PROJECT_NAME}_tests ${GTEST_LIBRARIES} ${Boost_LIBRARIES} rfsslam )
+  target_link_libraries(${PROJECT_NAME}_tests
+    ${visualization_msgs_TARGETS}
+    rclcpp::rclcpp
+    rfsslam
+    ${GTEST_LIBRARIES}
+    ${BOOST_COMPONENT_TARGETS}
+  )
 
 
-ENDIF()
+endif()
 
 install(
   TARGETS rbphdslam6dSim_euroc
