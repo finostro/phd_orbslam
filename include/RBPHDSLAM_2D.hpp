@@ -48,7 +48,7 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
-using namespace rfs;
+
 
 /**
  * \class RBPHDSLAM_2D
@@ -94,7 +94,7 @@ public:
 
     kMax_ = pt.get<int>("config.timesteps");
     dT_ = pt.get<double>("config.sec_per_timestep");
-    dTimeStamp_ = TimeStamp(dT_);
+    dTimeStamp_ = rfs::TimeStamp(dT_);
 
     nSegments_ = pt.get<int>("config.trajectory.nSegments");
     max_dx_ = pt.get<double>("config.trajectory.max_dx_per_sec");
@@ -167,8 +167,8 @@ public:
       std::cerr << "Error while opening " << fileName << std::endl;
       exit(1);
     }
-    TimeStamp t;
-    MotionModel_Odometry2d::TState pose_k(t);
+    rfs::TimeStamp t;
+    rfs::MotionModel_Odometry2d::TState pose_k(t);
     deadReckoning_pose_.push_back(pose_k);
     std::string line;
     while(std::getline(isamFile, line )){
@@ -194,8 +194,8 @@ public:
       std::cerr << "Error while opening " << fileName << std::endl;
       exit(1);
     }
-    TimeStamp t;
-    MotionModel_Odometry2d::TState pose_k(t);
+    rfs::TimeStamp t;
+    rfs::MotionModel_Odometry2d::TState pose_k(t);
     groundtruth_pose_.push_back(pose_k);
     
     std::string line;
@@ -245,8 +245,8 @@ public:
 
       // get Covariance from information matrix
 
-      MotionModel_Odometry2d::TInput::Mat information_sqrt, information, covariance;
-      MotionModel_Odometry2d::TInput::Vec  odom_mean;
+      rfs::MotionModel_Odometry2d::TInput::Mat information_sqrt, information, covariance;
+      rfs::MotionModel_Odometry2d::TInput::Vec  odom_mean;
 
       odom_mean << x,y,theta;
       information_sqrt <<
@@ -255,15 +255,15 @@ public:
 	0.,   0., info_thetatheta;
       information = information_sqrt.transpose()*information_sqrt;
       covariance = information.inverse();
-      TimeStamp t(i_x1);
-      MotionModel_Odometry2d::TInput odom(odom_mean, covariance, t);
+      rfs::TimeStamp t(i_x1);
+      rfs::MotionModel_Odometry2d::TInput odom(odom_mean, covariance, t);
       if (isGroundTruth){
-	MotionModel_Odometry2d::TState::Mat Q;
+	rfs::MotionModel_Odometry2d::TState::Mat Q;
 	Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
-	MotionModel_Odometry2d motionModel(Q);
+	rfs::MotionModel_Odometry2d motionModel(Q);
     
 	groundtruth_displacement_.push_back(odom);
-	MotionModel_Odometry2d::TState x_k;
+	rfs::MotionModel_Odometry2d::TState x_k;
 	motionModel.step(x_k, groundtruth_pose_.back(), odom, dTimeStamp_);
 	groundtruth_pose_.push_back( x_k );
 	groundtruth_pose_.back().setTime(odom.getTime());
@@ -271,12 +271,12 @@ public:
       }
       else{
 	// deadReckoning
-	MotionModel_Odometry2d::TState::Mat Q;
+	rfs::MotionModel_Odometry2d::TState::Mat Q;
 	Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
-	MotionModel_Odometry2d motionModel(Q);
+	rfs::MotionModel_Odometry2d motionModel(Q);
     
         
-	MotionModel_Odometry2d::TState x_k;
+	rfs::MotionModel_Odometry2d::TState x_k;
 	motionModel.step(x_k, deadReckoning_pose_.back(), odom, dTimeStamp_);
 	deadReckoning_pose_.push_back( x_k );
 	deadReckoning_pose_.back().setTime(odom.getTime());
@@ -295,7 +295,7 @@ public:
 	 std::cerr << "Error while reading landmark\n";
 	 exit(1);
        }
-      MeasurementModel_RngBrg::TMeasurement::Mat information_sqrt, information, covariance;
+      rfs::MeasurementModel_RngBrg::TMeasurement::Mat information_sqrt, information, covariance;
       typename MeasurementModel_2D::TMeasurement::Vec  measurement_mean;
 
       measurement_mean << x,y;
@@ -304,7 +304,7 @@ public:
 	0.,  info_yy;
       information = information_sqrt.transpose()*information_sqrt;
       covariance = information.inverse();
-      TimeStamp t(i_x);
+      rfs::TimeStamp t(i_x);
       typename  MeasurementModel_2D::TMeasurement measurement(measurement_mean, covariance, t);
       if (isGroundTruth){
 	MeasurementModel_2D measurementModel( varzx_, varzy_ );
@@ -329,16 +329,16 @@ public:
   void generateTrajectory(int randSeed = 0){
 
     srand48( randSeed);
-    initializeGaussianGenerators();
+    rfs::initializeGaussianGenerators();
 
-    TimeStamp t;
+    rfs::TimeStamp t;
     int seg = 0;
-    MotionModel_Odometry2d::TState::Mat Q;
+    rfs::MotionModel_Odometry2d::TState::Mat Q;
     Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
-    MotionModel_Odometry2d motionModel(Q);
-    MotionModel_Odometry2d::TInput input_k(t);
-    MotionModel_Odometry2d::TState pose_k(t);
-    MotionModel_Odometry2d::TState pose_km(t);
+    rfs::MotionModel_Odometry2d motionModel(Q);
+    rfs::MotionModel_Odometry2d::TInput input_k(t);
+    rfs::MotionModel_Odometry2d::TState pose_k(t);
+    rfs::MotionModel_Odometry2d::TState pose_km(t);
     groundtruth_displacement_.reserve( kMax_ );
     groundtruth_pose_.reserve( kMax_ );
     groundtruth_displacement_.push_back(input_k);
@@ -352,11 +352,11 @@ public:
 	double dx = 0;
 	double dy = 0;
 	double dz = 0;
-	MotionModel_Odometry2d::TInput::Vec d;
-	MotionModel_Odometry2d::TInput::Vec dCovDiag;
+	rfs::MotionModel_Odometry2d::TInput::Vec d;
+	rfs::MotionModel_Odometry2d::TInput::Vec dCovDiag;
 	d << dx, dy, dz;
 	dCovDiag << 0, 0, 0;
-	input_k = MotionModel_Odometry2d::TInput(d, dCovDiag.asDiagonal(), k);
+	input_k = rfs::MotionModel_Odometry2d::TInput(d, dCovDiag.asDiagonal(), k);
       }else if( k >= kMax_ / nSegments_ * seg ){
 	seg++;
 	double dx = drand48() * max_dx_ * dT_;
@@ -365,17 +365,17 @@ public:
 	}
 	double dy = (drand48() * max_dy_ * 2 - max_dy_) * dT_;
 	double dz = (drand48() * max_dz_ * 2 - max_dz_) * dT_;
-	MotionModel_Odometry2d::TInput::Vec d;
-	MotionModel_Odometry2d::TInput::Vec dCovDiag;
+	rfs::MotionModel_Odometry2d::TInput::Vec d;
+	rfs::MotionModel_Odometry2d::TInput::Vec dCovDiag;
 	d << dx, dy, dz;
 	dCovDiag << Q(0,0), Q(1,1), Q(2,2);
-	input_k = MotionModel_Odometry2d::TInput(d, dCovDiag.asDiagonal(), k);  
+	input_k = rfs::MotionModel_Odometry2d::TInput(d, dCovDiag.asDiagonal(), k);
       }
 
       groundtruth_displacement_.push_back(input_k);
       groundtruth_displacement_.back().setTime(t);
 
-      MotionModel_Odometry2d::TState x_k;
+      rfs::MotionModel_Odometry2d::TState x_k;
       motionModel.step(x_k, groundtruth_pose_[k-1], input_k, dTimeStamp_);
       groundtruth_pose_.push_back( x_k );
       groundtruth_pose_.back().setTime(t);
@@ -388,34 +388,34 @@ public:
   void generateOdometry(){
 
     odometry_.reserve( kMax_ );
-    MotionModel_Odometry2d::TInput zero;
-    MotionModel_Odometry2d::TInput::Vec u0;
+    rfs::MotionModel_Odometry2d::TInput zero;
+    rfs::MotionModel_Odometry2d::TInput::Vec u0;
     u0.setZero();
     zero.set(u0, 0);
     odometry_.push_back( zero );
 
-    MotionModel_Odometry2d::TState::Mat Q;
+    rfs::MotionModel_Odometry2d::TState::Mat Q;
     Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
-    MotionModel_Odometry2d motionModel(Q);
+    rfs::MotionModel_Odometry2d motionModel(Q);
     deadReckoning_pose_.reserve( kMax_ );
     deadReckoning_pose_.push_back( groundtruth_pose_[0] );
 
-    TimeStamp t;
+    rfs::TimeStamp t;
 
     for( int k = 1; k < kMax_; k++){
       
       t += dTimeStamp_;
       double dt = dTimeStamp_.getTimeAsDouble();
 
-      MotionModel_Odometry2d::TInput in = groundtruth_displacement_[k];
-      MotionModel_Odometry2d::TState::Mat Qk = Q * dt * dt;
+      rfs::MotionModel_Odometry2d::TInput in = groundtruth_displacement_[k];
+      rfs::MotionModel_Odometry2d::TState::Mat Qk = Q * dt * dt;
       in.setCov(Qk);
-      MotionModel_Odometry2d::TInput out;
+      rfs::MotionModel_Odometry2d::TInput out;
       in.sample(out);
       
       odometry_.push_back( out );
 
-      MotionModel_Odometry2d::TState p;
+      rfs::MotionModel_Odometry2d::TState p;
       motionModel.step(p, deadReckoning_pose_[k-1], odometry_[k], dTimeStamp_);
       p.setTime(t);
       deadReckoning_pose_.push_back( p );
@@ -427,7 +427,7 @@ public:
   void generateLandmarks(){
     MeasurementModel_2D measurementModel;
     typename MeasurementModel_2D::TMeasurement::Mat covZ;
-    if (std::is_same<MeasurementModel_2D, MeasurementModel_RngBrg>::value)
+    if (std::is_same<MeasurementModel_2D, rfs::MeasurementModel_RngBrg>::value)
       covZ << varzr_, 0, 0, varzb_;
     else
       covZ << varzx_, 0, 0, varzy_;
@@ -468,7 +468,7 @@ public:
   void generateMeasurements(){
     MeasurementModel_2D measurementModel;
     typename MeasurementModel_2D::TMeasurement::Mat R;
-    if (std::is_same<MeasurementModel_2D, MeasurementModel_RngBrg>::value)
+    if (std::is_same<MeasurementModel_2D, rfs::MeasurementModel_RngBrg>::value)
                R << varzr_,0 ,0,  varzb_ ;
             else
               R << varzx_,0 ,0,  varzy_ ;
@@ -499,7 +499,7 @@ public:
       lmkFirstObsTime_[m] = -1;
     }
 
-    TimeStamp t;
+    rfs::TimeStamp t;
 
     for( int k = 1; k < kMax_; k++ ){
       
@@ -517,7 +517,7 @@ public:
 					   z_m_k);
         if(success){
           double range;
-          if (std::is_same<MeasurementModel_2D, MeasurementModel_RngBrg>::value){
+          if (std::is_same<MeasurementModel_2D, rfs::MeasurementModel_RngBrg>::value){
             range = z_m_k.get(0);
           }else{
             range = sqrt(z_m_k.get(0)*z_m_k.get(0) + z_m_k.get(1)*z_m_k.get(1));
@@ -575,13 +575,13 @@ public:
     if(!logResultsToFile_)
       return;
 
-    TimeStamp t;
+    rfs::TimeStamp t;
 
     FILE* pGTPoseFile;
     std::string filenameGTPose( logDirPrefix_ );
     filenameGTPose += "gtPose.dat";
     pGTPoseFile = fopen(filenameGTPose.data(), "w");
-    MotionModel_Odometry2d::TState::Vec x;
+    rfs::MotionModel_Odometry2d::TState::Vec x;
     for(int i = 0; i < groundtruth_pose_.size(); i++){
       groundtruth_pose_[i].get(x, t);
       fprintf( pGTPoseFile, "%f   %f   %f   %f\n", t.getTimeAsDouble(), x(0), x(1), x(2));
@@ -603,7 +603,7 @@ public:
     std::string filenameOdom( logDirPrefix_ );
     filenameOdom += "odometry.dat";
     pOdomFile = fopen(filenameOdom.data(),"w");
-    MotionModel_Odometry2d::TInput::Vec u;
+    rfs::MotionModel_Odometry2d::TInput::Vec u;
     for(int i = 0; i < odometry_.size(); i++){
       odometry_[i].get(u, t);
       fprintf( pOdomFile, "%f   %f   %f   %f\n", t.getTimeAsDouble(), u(0), u(1), u(2));
@@ -625,7 +625,7 @@ public:
     std::string filenameDeadReckoning( logDirPrefix_ );
     filenameDeadReckoning += "deadReckoning.dat";
     pDeadReckoningFile = fopen(filenameDeadReckoning.data(), "w");
-    MotionModel_Odometry2d::TState::Vec odo;
+    rfs::MotionModel_Odometry2d::TState::Vec odo;
     for(int i = 0; i < deadReckoning_pose_.size(); i++){
       deadReckoning_pose_[i].get(odo, t);
       fprintf( pDeadReckoningFile, "%f   %f   %f   %f\n", t.getTimeAsDouble(), odo(0), odo(1), odo(2));
@@ -637,21 +637,21 @@ public:
   /** RB-PHD Filter Setup */
   void setupRBPHDFilter(){
     
-    pFilter_ = new RBPHDFilter<MotionModel_Odometry2d,
-			       StaticProcessModel<Landmark2d>,
+    pFilter_ = new rfs::RBPHDFilter<rfs::MotionModel_Odometry2d,
+			       rfs::StaticProcessModel<rfs::Landmark2d>,
 			       MeasurementModel_2D,
-			       KalmanFilter<StaticProcessModel<Landmark2d>,MeasurementModel_2D >>( nParticles_ );
+			       rfs::KalmanFilter<rfs::StaticProcessModel<rfs::Landmark2d>,MeasurementModel_2D >>( nParticles_ );
 
     double dt = dTimeStamp_.getTimeAsDouble();
 
     // configure robot motion model (only need to set once since timesteps are constant)
-    MotionModel_Odometry2d::TState::Mat Q;
+    rfs::MotionModel_Odometry2d::TState::Mat Q;
     Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
     Q *= (pNoiseInflation_ * dt * dt);
     pFilter_->getProcessModel()->setNoise(Q);
 
     // configure landmark process model (only need to set once since timesteps are constant)
-    Landmark2d::Mat Q_lm;
+    rfs::Landmark2d::Mat Q_lm;
     Q_lm << varlmx_, 0, 0, varlmy_;
     Q_lm = Q_lm * dt * dt;
     pFilter_->getLmkProcessModel()->setNoise(Q_lm); 
@@ -659,7 +659,7 @@ public:
     // configure measurement model
     typename MeasurementModel_2D::TMeasurement::Mat R;
 
-    if (std::is_same<MeasurementModel_2D, MeasurementModel_RngBrg>::value)
+    if (std::is_same<MeasurementModel_2D, rfs::MeasurementModel_RngBrg>::value)
            R << varzr_,0 ,0,  varzb_ ;
         else
           R << varzx_,0 ,0,  varzy_ ;
@@ -722,7 +722,7 @@ public:
       filenameLandmarkEstFile += "landmarkEst.dat";
       pLandmarkEstFile = fopen(filenameLandmarkEstFile.data(), "w");
     }
-    MotionModel_Odometry2d::TState x_i;
+    rfs::MotionModel_Odometry2d::TState x_i;
     int zIdx = 0;
 
     if(logResultsToFile_){
@@ -734,7 +734,7 @@ public:
   
     /////////// Run simulator from k = 1 to kMax_ /////////
 
-    TimeStamp time;
+    rfs::TimeStamp time;
 
     
 
@@ -775,13 +775,13 @@ public:
       ////////// Prediction Step //////////
 
       // configure robot motion model ( not necessary since in simulation, timesteps are constant)
-      // MotionModel_Odometry2d::TState::Mat Q;
+      // rfs::MotionModel_Odometry2d::TState::Mat Q;
       // Q << vardx_, 0, 0, 0, vardy_, 0, 0, 0, vardz_;
       // Q *= (pNoiseInflation_ * dt * dt);
       // pFilter_->getProcessModel()->setNoise(Q);
 
       // configure landmark process model ( not necessary since in simulation, timesteps are constant)
-      // Landmark2d::Mat Q_lm;
+      // rfs::Landmark2d::Mat Q_lm;
       // Q_lm << varlmx_, 0, 0, varlmy_;
       // Q_lm = Q_lm * dt * dt;
       // pFilter_->getLmkProcessModel()->setNoise(Q_lm);
@@ -795,7 +795,7 @@ public:
 
       // Prepare measurement vector for update
       std::vector<typename MeasurementModel_2D::TMeasurement> Z;
-      TimeStamp kz = measurements_[ zIdx ].getTime();
+      rfs::TimeStamp kz = measurements_[ zIdx ].getTime();
       while( kz == time ){ 
 	Z.push_back( measurements_[zIdx] );
 	zIdx++;
@@ -944,7 +944,7 @@ private:
 
   int kMax_; /**< number of timesteps */
   double dT_; /**< duration of timestep in seconds */
-  TimeStamp dTimeStamp_; /**< duration of timestep in timestamp */
+  rfs::TimeStamp dTimeStamp_; /**< duration of timestep in timestamp */
 
   // Trajectory
   int nSegments_;
@@ -955,10 +955,10 @@ private:
   double vardx_;
   double vardy_;
   double vardz_;
-  std::vector<MotionModel_Odometry2d::TInput> groundtruth_displacement_;
-  std::vector<MotionModel_Odometry2d::TState> groundtruth_pose_;
-  std::vector<MotionModel_Odometry2d::TInput> odometry_;
-  std::vector<MotionModel_Odometry2d::TState> deadReckoning_pose_;
+  std::vector<rfs::MotionModel_Odometry2d::TInput> groundtruth_displacement_;
+  std::vector<rfs::MotionModel_Odometry2d::TState> groundtruth_pose_;
+  std::vector<rfs::MotionModel_Odometry2d::TInput> odometry_;
+  std::vector<rfs::MotionModel_Odometry2d::TState> deadReckoning_pose_;
 
   // Landmarks 
   int nLandmarks_;
@@ -980,11 +980,11 @@ private:
   std::vector<typename MeasurementModel_2D::TMeasurement> measurements_;
 
   // Filters
-  KalmanFilter_RngBrg kf_;
-  RBPHDFilter<MotionModel_Odometry2d, 
-	      StaticProcessModel<Landmark2d>,
+  rfs::KalmanFilter_RngBrg kf_;
+  rfs::RBPHDFilter<rfs::MotionModel_Odometry2d,
+	      rfs::StaticProcessModel<rfs::Landmark2d>,
 	      MeasurementModel_2D,  
-	      KalmanFilter<StaticProcessModel<Landmark2d>,MeasurementModel_2D >> *pFilter_; 
+	      rfs::KalmanFilter<rfs::StaticProcessModel<rfs::Landmark2d>,MeasurementModel_2D >> *pFilter_;
   int nParticles_;
   double pNoiseInflation_;
   double zNoiseInflation_;
