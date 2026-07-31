@@ -59,6 +59,8 @@
 #include <vector>
 #include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 #include <yaml-cpp/yaml.h>
+#include "ament_index_cpp/get_package_prefix.hpp"
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/core.hpp>
@@ -136,6 +138,9 @@ public:
         node["config"]["logging"]["logResultsToFile"].as<bool>();
     logTimingToFile_ = node["config"]["logging"]["logTimingToFile"].as<bool>();
     logDirPrefix_ = node["config"]["logging"]["logDirPrefix"].as<std::string>();
+    if (std::filesystem::path(logDirPrefix_).is_relative()) {
+      logDirPrefix_ = ament_index_cpp::get_package_prefix("phd_orbslam_minimal") + "/" + logDirPrefix_;
+    }
     if (*logDirPrefix_.rbegin() != '/')
       logDirPrefix_ += '/';
 
@@ -1807,7 +1812,7 @@ int main(int argc, char *argv[]) {
       .store_into(printHelp);
   parser.add_argument("-c", "--cfg")
       .help("configuration xml file")
-      .default_value("cfg/rbphdslam2dSim.yaml")
+      .default_value("cfg/rbphdslam6dSim_euroc.yaml")
       .store_into(cfgFileName);
   parser.add_argument("-t", "--trajectory")
       .help("trajectory number (default: a random integer)")
@@ -1829,6 +1834,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (std::filesystem::path(cfgFileName).is_relative()) {
+    cfgFileName = ament_index_cpp::get_package_share_directory("phd_orbslam_minimal") + "/" + cfgFileName;
+  }
   std::cout << "Configuration file: " << cfgFileName << std::endl;
   if (!sim.readConfigFile(cfgFileName.data())) {
     return -1;

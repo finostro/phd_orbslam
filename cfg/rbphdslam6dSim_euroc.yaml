@@ -1,8 +1,8 @@
 
 config:
   euroc:
-    folder: /media/finostro/KINGSTON/euroc_dataset/V2_01_easy
-    timestampsFilename: /media/finostro/KINGSTON/euroc_dataset/EuRoC_TimeStamps/V201.txt
+    folder: /run/media/felipe-inostroza/KINGSTON/euroc_dataset/V2_01_easy
+    timestampsFilename: /run/media/felipe-inostroza/KINGSTON/euroc_dataset/EuRoC_TimeStamps/V201.txt
   use_ros_gui: true
   logging:
     logResultsToFile: true

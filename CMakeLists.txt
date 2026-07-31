@@ -23,6 +23,7 @@ set(MARCH_NATIVE_CONFIGS "$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>")
 
 # ROS2 stuff
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -165,6 +166,7 @@ target_link_libraries(rbphdslam6dSim_euroc
     ${visualization_msgs_TARGETS}
     rclcpp::rclcpp
     tf2::tf2
+    ament_index_cpp::ament_index_cpp
   PRIVATE
     ${BOOST_COMPONENT_TARGETS}
     ${YAML_CPP_LIBRARIES}
@@ -196,9 +198,15 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  TARGETS rbphdslam6dSim_euroc
+  TARGETS rfsslam rbphdslam6dSim_euroc
   EXPORT export_${PROJECT_NAME}
-  DESTINATION lib/${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY cfg
+  DESTINATION share/${PROJECT_NAME}/
 )
 
 
