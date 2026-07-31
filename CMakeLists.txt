@@ -50,15 +50,14 @@ set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
 
 # Boost
-set(Boost_USE_STATIC_LIBS ON)
+set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 # set(Boost_USE_STATIC_RUNTIME ON)
 cmake_policy(SET CMP0167 NEW)
-find_package(Boost CONFIG REQUIRED COMPONENTS timer chrono system filesystem graph container)
+find_package(Boost CONFIG REQUIRED COMPONENTS timer chrono filesystem graph container)
 set(BOOST_COMPONENT_TARGETS
   Boost::timer
   Boost::chrono
-  Boost::system
   Boost::filesystem
   Boost::graph
   Boost::container
