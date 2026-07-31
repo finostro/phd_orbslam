@@ -119,7 +119,7 @@ public:
    * \param[in] measurement  \f$\mathbf{z}\f$ measurement, for which the uncertainty is \f$\mathbf{R}\f$
    * \param[out] landmark  \f$\mathbf{m}\f$, predicted landmark position with uncertainty
    */
-  void inverseMeasure(const Pose2d &pose, const Measurement2d &measurement, Landmark2d &landmark) const;
+  bool inverseMeasure(const Pose2d &pose, const Measurement2d &measurement, Landmark2d &landmark) const;
 
   /**
    * Abstract function of determining a landmark's probability of detection, and if the landmark is close to the sensing limit.

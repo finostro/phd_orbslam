@@ -67,6 +67,7 @@ public:
     double rangeLimMax_; /**< sensing range limit, beyond which \f$ P_D = 0 \f$*/
     double rangeLimMin_; /**< sensing range limit, below which \f$ P_D = 0 \f$*/
     double rangeLimBuffer_; /**< Used to define a buffer zone around rangeLimMax_ and rangeLimMin_ to indicate a measurement is close to to the sensing limit */
+    double minDisparity_ = 2.0;
     Camera camera;
     
   }config;
@@ -124,7 +125,7 @@ public:
    * \param[in] measurement  \f$\mathbf{z}\f$ measurement, for which the uncertainty is \f$\mathbf{R}\f$
    * \param[out] landmark  \f$\mathbf{m}\f$, predicted landmark position with uncertainty
    */
-  void inverseMeasure(const Pose6d &pose, const Measurement3d &measurement, Landmark3d &landmark) const;
+  bool inverseMeasure(const Pose6d &pose, const Measurement3d &measurement, Landmark3d &landmark) const;
 
   /**
    * Abstract function of determining a landmark's probability of detection, and if the landmark is close to the sensing limit.

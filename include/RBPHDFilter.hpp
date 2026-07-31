@@ -547,7 +547,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 
     const unsigned int i = particleIdx;
     const unsigned int nZ = this->measurements_.size();
-    std::cout << "updatemap nz " <<nZ<<"\n";
+    // std::cout << "updatemap nz " <<nZ<<"\n";
     
     int threadnum = 0;
     #ifdef _OPENMP
@@ -559,7 +559,7 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
     const unsigned int nM = this->particleSet_[i]->getData()->getGaussianCount();
     unused_measurements_[i].clear();  
     nLandmarksInFOV_[i] = 0;  
-    if(true || nM == 0){ // No existing landmark case -> flag all measurements as unused and go to next particles
+    if(nM == 0){ // No existing landmark case -> flag all measurements as unused and go to next particles
       for(int z = 0; z < nZ; z++){
 	unused_measurements_[i].push_back( z );
       }
@@ -1006,6 +1006,12 @@ template< class RobotProcessModel, class LmkProcessModel, class MeasurementModel
 void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFilter >::addBirthGaussians(){
   std::cout << "adding birth\n";
 
+    std::cout << "parents: [ ";
+  for(int i = 0; i < this->nParticles_; i++){
+
+    std::cout <<this->particleSet_[i]->getParentId() << " , ";
+  }
+    std::cout << "]\n";
   for(int i = 0; i < this->nParticles_; i++){
 
     if(resampleOccured_){ 
@@ -1052,7 +1058,10 @@ void RBPHDFilter< RobotProcessModel, LmkProcessModel, MeasurementModel, KalmanFi
 	c.nChecks = 0;
 	// this->particleSet_[i]->getPose(robot_pose);
 	robot_pose = *(this->particleSet_[i]); 
-	this->pMeasurementModel_->inverseMeasure( robot_pose, unused_z, c );
+	if (!this->pMeasurementModel_->inverseMeasure( robot_pose, unused_z, c ))
+	{
+	  continue;
+	}
 
 	if(config.birthGaussianMeasurementCountThreshold_ == 1 ||
 	   nLandmarksInFOV_[i] <= config.birthGaussianCurrentMeasurementCountThreshold_){

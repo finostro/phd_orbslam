@@ -44,6 +44,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <gtsam/base/Matrix.h>
@@ -1137,7 +1138,11 @@ public:
         continue;
 
       auto mean = gaussian_mixture->getGaussian(i)->get();
-      std::cout << "adding point " << *gaussian_mixture->getGaussian(i)<< "\n";
+      if (!(std::isfinite(mean.x())&std::isfinite(mean.y())&std::isfinite(mean.z()))){
+        std::cout << "adding point " << *gaussian_mixture->getGaussian(i)
+                  << "\n";
+              }
+      // std::cout << "adding point " << *gaussian_mixture->getGaussian(i)<< "\n";
       *iter_x = mean.x();
       *iter_y = mean.y();
       *iter_z = mean.z();
@@ -1190,7 +1195,7 @@ return poses;
       std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &measurements,
       double time) {
 
-    std::cout << "number of matches: " << matches_left_to_right.size() << "\n";
+    std::cout << "number of matches: " << matches_left_to_right.size() << "        \n";
     for (int i = 0; i < matches_left_to_right.size(); i++) {
 
       MeasurementModel_3D_stereo_orb::TMeasurement measurement;
@@ -1267,6 +1272,7 @@ return poses;
     // For each left keypoint search a match in the right image
     std::vector<std::pair<int, int>> vDistIdx;
     vDistIdx.reserve(Nl);
+    matches_left_to_right.clear();
 
     for (int iL = 0; iL < Nl; iL++) {
       const cv::KeyPoint &kpL = keypoints_left[iL];
@@ -1516,7 +1522,7 @@ return poses;
         }
         std::cout << ni + 1 << "/" << nImages
                   << "                                   \r";
-        cv::waitKey(0); // Wait for a keystroke in the window
+        cv::waitKey(1); // Wait for a keystroke in the window
       }
       if (ni <= 2) {
         for (int i = 0; i < nParticles_; i++)
@@ -1637,7 +1643,7 @@ return poses;
         }
         std::cout << ni + 1 << "/" << nImages
                   << "                                   \r";
-        cv::waitKey(0); // Wait for a keystroke in the window
+        cv::waitKey(1); // Wait for a keystroke in the window
       }
     }
     std::cout << "loaded images\n";

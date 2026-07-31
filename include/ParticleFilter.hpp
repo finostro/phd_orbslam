@@ -338,9 +338,9 @@ void ParticleFilter<ProcessModel, MeasurementModel, ParticleExtraData>::propagat
 										   bool useInputNoise,
 										   bool maintainTrajectory ){
 
-    TPose x_km, x_k;
 #pragma omp parallel for
     for( int i = 0 ; i < nParticles_ ; i++ ){
+      TPose x_km, x_k;
       if(maintainTrajectory){
 	pParticle p_km( new Particle<TPose, ParticleExtraData>() );
 	*p_km = *(particleSet_[i]);

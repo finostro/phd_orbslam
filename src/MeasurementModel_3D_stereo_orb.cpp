@@ -30,6 +30,7 @@
 
 #include "measurement_models/MeasurementModel_3D_stereo_orb.hpp"
 #include "measurement_models/isInFrustum.hpp"
+#include <Eigen/src/Core/Matrix.h>
 #include <boost/none.hpp>
 #include <gtsam/geometry/StereoPoint2.h>
 
@@ -84,60 +85,74 @@ bool MeasurementModel_3D_stereo_orb::measure(const Pose6d &pose,
 
   auto pose_gtsam = to_gtsam(pose);
   auto landmark_gtsam = to_gtsam(landmark);
+  Eigen::Matrix3d  lm_cov;
+  landmark.getCov(lm_cov);
+
   gtsam::Point3  point_in_camera_frame = pose_gtsam.transformTo(landmark_gtsam);
 
   bool discard;
   double pd =probabilityOfDetection(pose, landmark, discard);
-  std::cout << "PD: "<< pd << "\n";
+  // std::cout << "PD: "<< pd << "\n";
   if( pd <= 0.0)
   {
     return false;
   }
 
-  std::cout << "z: "<< point_in_camera_frame.z() << "\n";
+  // std::cout << "z: "<< point_in_camera_frame.z() << "\n";
   if (point_in_camera_frame.z() < 0)
     return false;
 
+  Eigen::Matrix3d jacobian_wrt_lmk_tmp;
   Eigen::Matrix<double, 3,6> jacobian_wrt_pose_tmp;
   auto stereopoint =  jacobian_wrt_pose? 
-      config.camera.camera.project2(point_in_camera_frame, jacobian_wrt_pose_tmp, jacobian_wrt_lmk):
+      config.camera.camera.project2(point_in_camera_frame, jacobian_wrt_pose_tmp, jacobian_wrt_lmk_tmp):
       config.camera.camera.project2(point_in_camera_frame, gtsam::OptionalJacobian<3, 6>()
-				    , jacobian_wrt_lmk);
+				    , jacobian_wrt_lmk_tmp);
 
   if (jacobian_wrt_pose)
   {
     jacobian_wrt_pose->setZero();
     jacobian_wrt_pose->block<3,6>(0,0) = jacobian_wrt_pose_tmp;
   }
-
-  measurement.set( stereopoint.vector());
-
-  std::cout << "MEASURE: \n";
-  std::cout << "pose: "<<pose << "\n";
-  std::cout << "lm: "<<landmark << "\n";
-  std::cout << "measurement: "<<measurement << "\n";
-  if(jacobian_wrt_lmk){
-    std::cout << " lm_jk: "<< *jacobian_wrt_lmk << "\n";
-  }else{
-    std::cout << "lm_jk not given\n";
+  if (jacobian_wrt_lmk){
+    jacobian_wrt_lmk->setZero();
+    *jacobian_wrt_lmk = jacobian_wrt_lmk_tmp;
   }
-  if(jacobian_wrt_pose){
-    std::cout << " pose_jk: "<< *jacobian_wrt_pose << "\n";
-  }else{
-    std::cout << "pose_jk not given\n";
-  }
+
+
+  auto cov = (jacobian_wrt_lmk_tmp * lm_cov * jacobian_wrt_lmk_tmp.transpose()) + R_;
+  measurement.set( stereopoint.vector(), cov);
+
+  // std::cout << "MEASURE: \n";
+  // std::cout << "pose: "<<pose << "\n";
+  // std::cout << "lm: "<<landmark << "\n";
+  // std::cout << "measurement: "<<measurement << "\n";
+  // if(jacobian_wrt_lmk){
+  //   std::cout << " lm_jk: "<< *jacobian_wrt_lmk << "\n";
+  // }else{
+  //   std::cout << "lm_jk not given\n";
+  // }
+  // if(jacobian_wrt_pose){
+  //   std::cout << " pose_jk: "<< *jacobian_wrt_pose << "\n";
+  // }else{
+  //   std::cout << "pose_jk not given\n";
+  // }
 
 
   return true;
 }
 
-void MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
+bool MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
 					 const Measurement3d &measurement,
 					 Landmark3d &landmark) const{
 
   auto pose_gtsam = to_gtsam(pose);
   auto landmark_gtsam = to_gtsam(landmark);
   gtsam::StereoPoint2 stereopoint(measurement.get());
+  auto disparity = stereopoint.uL() - stereopoint.uR();
+  if ( disparity < config.minDisparity_){
+    return false;
+  }
 
   Eigen::Matrix3d lmk_jacobian;
   auto point_in_camera_frame = config.camera.camera.backproject2(stereopoint,gtsam::OptionalJacobian<3,6>(), lmk_jacobian);
@@ -164,11 +179,12 @@ void MeasurementModel_3D_stereo_orb::inverseMeasure(const Pose6d &pose,
   //
   // covariance = Hinv * measurementUncertainty * Hinv.transpose();
   landmark.set( mean, covariance );
-  std::cout << "INV MEASURE: \n";
-  std::cout << "pose: "<<pose << "\n";
-  std::cout << "lm: "<<landmark << "\n";
-  std::cout << "measurement: "<<measurement << "\n";
-  std::cout << "cov: "<< covariance << "\n";
+  // std::cout << "INV MEASURE: \n";
+  // std::cout << "pose: "<<pose << "\n";
+  // std::cout << "lm: "<<landmark << "\n";
+  // std::cout << "measurement: "<<measurement << "\n";
+  // std::cout << "cov: "<< covariance << "\n";
+  return true;
 
 }
 
@@ -187,7 +203,7 @@ double MeasurementModel_3D_stereo_orb::probabilityOfDetection( const Pose6d &pos
   diff=landmarkState-robotPose;
 
   range = diff.norm();
-  std::cout << "range: " << range << "isinfrust " << isInFrustum(landmark, pose, config.camera, NULL) << "\n";
+  // std::cout << "range: " << range << "isinfrust " << isInFrustum(landmark, pose, config.camera, NULL) << "\n";
 
   if( range <= config.rangeLimMax_ && range >= config.rangeLimMin_ && isInFrustum(landmark, pose, config.camera, NULL)){
     Pd = config.probabilityOfDetection_;

@@ -169,7 +169,7 @@ public:
    * \param[in] measurement  \f$\mathbf{z}\f$ measurement, for which the uncertainty is \f$\mathbf{R}\f$
    * \param[out] landmark  \f$\mathbf{m}\f$, predicted landmark position with uncertainty
    */
-  virtual void inverseMeasure( const PoseType &pose,
+  virtual bool inverseMeasure( const PoseType &pose,
 			       const MeasurementType &measurement, 
 			       LandmarkType &landmark ) const = 0;
 

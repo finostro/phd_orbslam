@@ -278,6 +278,7 @@ correct(const TPose &pose,
 
   TMeasurement measurement_exp; /**< expected measurement */
   ::Eigen::Matrix <double, TLandmark::Vec::RowsAtCompileTime, TMeasurement::Vec::RowsAtCompileTime>  K; /**< Kalman gain */
+  ::Eigen::Matrix <double, TMeasurement::Vec::RowsAtCompileTime, TLandmark::Vec::RowsAtCompileTime > R; /**< measurement model Jacobian */
   ::Eigen::Matrix <double, TMeasurement::Vec::RowsAtCompileTime, TLandmark::Vec::RowsAtCompileTime > H; /**< measurement model Jacobian */
   ::Eigen::Matrix <double, TMeasurement::Vec::RowsAtCompileTime, TMeasurement::Vec::RowsAtCompileTime> S; /**< innovation covariance */
   ::Eigen::Matrix <double, TMeasurement::Vec::RowsAtCompileTime, TMeasurement::Vec::RowsAtCompileTime> S_inv; /**< inverse innovation covariance */
@@ -307,7 +308,12 @@ correct(const TPose &pose,
   measurement_exp.get(z_exp, S);
   measurement_exp.getCovInv(S_inv);
   K = P * H.transpose() * S_inv;
-  P_updated = ( I - K * H ) * P;
+  auto reduction =  I - K  * H;
+  pMeasurementModel_->getNoise(R);
+  
+  P_updated = reduction * P * reduction.transpose() + K * R * K.transpose();
+  auto reduction_det = reduction.determinant();
+  auto P_pre = P_updated;
   P_updated = ( P_updated + P_updated.transpose() ) / 2; // make sure covariance is symetric
 
   landmark_updated.resize( measurement.size() );

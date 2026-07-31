@@ -647,9 +647,12 @@ namespace rfs
      **/
     bool checkCov(){
       Mat t=Sx_-Sx_.transpose();
-      assert(t.isZero());
+      assert(t.isZero(1e-5));
+      auto det = Sx_.determinant();
+      assert(det>=0);
 
-      return t.isZero();
+
+      return t.isZero(1e-5);
     }
 
   protected:

@@ -28,17 +28,21 @@ visualization_msgs::msg::Marker to_marker(const Landmark3d &lm)
     std::cerr << "bad covariance eigenvalues\n";
 
   } else {
-    Eigen::Quaterniond q(eigensolver.eigenvectors());
+    Eigen::Matrix3d eigenvectors = eigensolver.eigenvectors();
+    if (eigenvectors.determinant() < 0) {
+      eigenvectors.col(0) *= -1;
+    }
+    Eigen::Quaterniond q(eigenvectors);
 
     marker.pose.orientation.w = q.w();
     marker.pose.orientation.x = q.x();
     marker.pose.orientation.y = q.y();
     marker.pose.orientation.z = q.z();
 
-
-    marker.scale.x = sqrt(eigensolver.eigenvalues()(0));
-    marker.scale.y = sqrt(eigensolver.eigenvalues()(1));
-    marker.scale.z = sqrt(eigensolver.eigenvalues()(2));
+    // Marker::SPHERE scale fields are diameters, so double the 1-sigma std dev.
+    marker.scale.x = 2.0 * sqrt(eigensolver.eigenvalues()(0));
+    marker.scale.y = 2.0 * sqrt(eigensolver.eigenvalues()(1));
+    marker.scale.z = 2.0 * sqrt(eigensolver.eigenvalues()(2));
   }
 
   return marker;
