@@ -18,13 +18,13 @@ This project uses **CMake with ROS2 (ament_cmake)** as the build system:
 
 ```bash
 # From workspace root (one level up from this directory)
-colcon build --packages-select phd_orbslam_minimal
+colcon build --symlink-install --packages-select phd_orbslam_minimal
 
 # Build with debug symbols
-colcon build --packages-select phd_orbslam_minimal --cmake-args -DCMAKE_BUILD_TYPE=Debug
+colcon build --symlink-install --packages-select phd_orbslam_minimal --cmake-args -DCMAKE_BUILD_TYPE=Debug
 
 # Clean build
-rm -rf ../build && colcon build --packages-select phd_orbslam_minimal
+rm -rf ../build && colcon build --symlink-install --packages-select phd_orbslam_minimal
 ```
 
 ### Running the Main Executable

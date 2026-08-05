@@ -44,9 +44,11 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <gtsam/base/Matrix.h>
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/StereoCamera.h>
@@ -1171,6 +1173,179 @@ for (auto &p: *particle_set){
 return poses;
   }
 
+  struct GroundTruthEntry {
+    double timestamp;
+    Eigen::Vector3d pos;
+    Eigen::Quaterniond rot;
+    geometry_msgs::msg::Pose pose;
+  };
+
+  bool loadGroundTruth(const std::string &filename) {
+    groundtruth_trajectory_.clear();
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+      std::cerr << "Could not open ground truth file: " << filename << std::endl;
+      return false;
+    }
+
+    std::cout << "Loading ground truth trajectory from: " << filename << std::endl;
+    std::string line;
+    while (std::getline(file, line)) {
+      if (line.empty() || line[0] == '#')
+        continue;
+
+      std::stringstream ss(line);
+      double t, tx, ty, tz, qx, qy, qz, qw;
+      if (ss >> t >> tx >> ty >> tz >> qx >> qy >> qz >> qw) {
+        GroundTruthEntry entry;
+        entry.timestamp = t;
+        entry.pos = Eigen::Vector3d(tx, ty, tz);
+        entry.rot = Eigen::Quaterniond(qw, qx, qy, qz);
+        entry.rot.normalize();
+        groundtruth_trajectory_.push_back(entry);
+      }
+    }
+
+    file.close();
+
+    if (groundtruth_trajectory_.empty()) {
+      std::cerr << "Ground truth trajectory is empty!" << std::endl;
+      return false;
+    }
+
+    // Align trajectory relative to initial GT pose so GT starts at origin (0,0,0) in map frame
+    Eigen::Vector3d p_0 = groundtruth_trajectory_[0].pos;
+    Eigen::Quaterniond q_0 = groundtruth_trajectory_[0].rot;
+    Eigen::Quaterniond q_0_inv = q_0.conjugate();
+
+    for (auto &entry : groundtruth_trajectory_) {
+      Eigen::Vector3d pos_rel = q_0_inv * (entry.pos - p_0);
+      Eigen::Quaterniond rot_rel = q_0_inv * entry.rot;
+      rot_rel.normalize();
+
+      entry.pose.position.x = pos_rel.x();
+      entry.pose.position.y = pos_rel.y();
+      entry.pose.position.z = pos_rel.z();
+      entry.pose.orientation.x = rot_rel.x();
+      entry.pose.orientation.y = rot_rel.y();
+      entry.pose.orientation.z = rot_rel.z();
+      entry.pose.orientation.w = rot_rel.w();
+    }
+
+    std::cout << "Loaded " << groundtruth_trajectory_.size()
+              << " ground truth pose entries." << std::endl;
+    groundtruth_loaded_ = true;
+    return true;
+  }
+
+  geometry_msgs::msg::Pose getGroundtruthPoseAtTime(double current_time) const {
+    geometry_msgs::msg::Pose pose;
+    pose.orientation.w = 1.0;
+
+    if (!groundtruth_loaded_ || groundtruth_trajectory_.empty()) {
+      return pose;
+    }
+
+    double t_search = current_time;
+    if (t_search < 1e6) {
+      t_search += t_0_;
+    }
+
+    if (t_search <= groundtruth_trajectory_.front().timestamp) {
+      return groundtruth_trajectory_.front().pose;
+    }
+    if (t_search >= groundtruth_trajectory_.back().timestamp) {
+      return groundtruth_trajectory_.back().pose;
+    }
+
+    auto it = std::lower_bound(
+        groundtruth_trajectory_.begin(), groundtruth_trajectory_.end(), t_search,
+        [](const GroundTruthEntry &entry, double val) {
+          return entry.timestamp < val;
+        });
+
+    auto prev_it = it - 1;
+    double t1 = prev_it->timestamp;
+    double t2 = it->timestamp;
+    double alpha = (t2 > t1) ? (t_search - t1) / (t2 - t1) : 0.0;
+
+    pose.position.x = (1.0 - alpha) * prev_it->pose.position.x + alpha * it->pose.position.x;
+    pose.position.y = (1.0 - alpha) * prev_it->pose.position.y + alpha * it->pose.position.y;
+    pose.position.z = (1.0 - alpha) * prev_it->pose.position.z + alpha * it->pose.position.z;
+
+    Eigen::Quaterniond q1(prev_it->pose.orientation.w, prev_it->pose.orientation.x,
+                          prev_it->pose.orientation.y, prev_it->pose.orientation.z);
+    Eigen::Quaterniond q2(it->pose.orientation.w, it->pose.orientation.x,
+                          it->pose.orientation.y, it->pose.orientation.z);
+    Eigen::Quaterniond q = q1.slerp(alpha, q2);
+    q.normalize();
+
+    pose.orientation.x = q.x();
+    pose.orientation.y = q.y();
+    pose.orientation.z = q.z();
+    pose.orientation.w = q.w();
+
+    return pose;
+  }
+
+  visualization_msgs::msg::Marker makeGroundtruthPoseMarker(double current_time = -1.0) {
+    if (current_time < 0.0) {
+      current_time = current_time_;
+    }
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = rclcpp::Time(0);
+    marker.ns = "groundtruth_pose";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::ARROW;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    marker.pose = getGroundtruthPoseAtTime(current_time);
+
+    // Particle pose marker arrow length is ~0.3m. 30% larger is 0.39m length.
+    marker.scale.x = 0.39;  // total arrow length
+    marker.scale.y = 0.039; // shaft diameter (30% larger than 0.03m)
+    marker.scale.z = 0.039; // head diameter (30% larger than 0.03m)
+
+    // Green color (distinct from particles which are red/orange)
+    marker.color.a = 1.0;
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+
+    return marker;
+  }
+
+  visualization_msgs::msg::Marker makeGroundtruthTrajectoryMarker() {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = rclcpp::Time(0);
+    marker.ns = "groundtruth_trajectory";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    marker.scale.x = 0.03; // Line width
+
+    // Green color matching ground truth pose marker
+    marker.color.a = 1.0;
+    marker.color.r = 0.0;
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+
+    marker.points.reserve(groundtruth_trajectory_.size());
+    for (const auto &entry : groundtruth_trajectory_) {
+      geometry_msgs::msg::Point pt;
+      pt.x = entry.pose.position.x;
+      pt.y = entry.pose.position.y;
+      pt.z = entry.pose.position.z;
+      marker.points.push_back(pt);
+    }
+
+    return marker;
+  }
+
   std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(
       std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &Z) {
     auto marker_array_msg =
@@ -1182,7 +1357,8 @@ return poses;
     }
 
     addLandmarksMarkers(marker_array_msg->markers);
-    
+    marker_array_msg->markers.push_back(makeGroundtruthPoseMarker());
+    marker_array_msg->markers.push_back(makeGroundtruthTrajectoryMarker());
 
     return std::move(marker_array_msg);
   }
@@ -1468,9 +1644,15 @@ return poses;
         double t;
         ss >> t;
         static double t_0 = t / 1e9;
+        t_0_ = t_0;
         vTimestampsCam.push_back(t / 1e9 - t_0);
       }
     }
+    std::string gtPath = "/media/hdd/finostro/euroc_dataset/V2_01_easy/mav0/state_groundtruth_estimate0/data.tum";
+    if (!std::filesystem::exists(gtPath)) {
+      gtPath = eurocFolder_ + "/mav0/state_groundtruth_estimate0/data.tum";
+    }
+    loadGroundTruth(gtPath);
     dT_ = (vTimestampsCam[vTimestampsCam.size() - 1] - vTimestampsCam[0]) /
           (vTimestampsCam.size());
     dTimeStamp_ = TimeStamp(dT_);
@@ -1500,6 +1682,7 @@ return poses;
     odometry_.resize(nImages, zero);
 
     for (int ni = 0; ni < nImages; ni++) {
+      current_time_ = vTimestampsCam[ni];
       // std::cout << "  loading image " << ni + 1 << "/" << nImages << "\n";
 
       if (!rclcpp::ok()) {
@@ -1510,10 +1693,6 @@ return poses;
       pFilter_->predict(odometry_[ni], dTimeStamp_);
 
       {
-        std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
-            measurements_[ni];
-
-
         // Visualization
         if (use_ros_gui_) {
 
@@ -1620,7 +1799,7 @@ return poses;
 
 
       // Prepare measurement vector for update
-      TimeStamp time = measurements_[ni][0].getTime();
+      TimeStamp time = (!measurements_[ni].empty()) ? measurements_[ni][0].getTime() : TimeStamp(tframe);
 
       std::cout << "number of measurements: " << measurements_[ni].size()
                 << "\n";
@@ -1787,6 +1966,11 @@ private:
   std::vector<float> orbExtractorScaleFactors;
   std::string eurocFolder_;
   std::string eurocTimestampsFilename_;
+
+  std::vector<GroundTruthEntry> groundtruth_trajectory_;
+  bool groundtruth_loaded_ = false;
+  double t_0_ = 0.0;
+  double current_time_ = 0.0;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr
       particle_poses_pub_;
