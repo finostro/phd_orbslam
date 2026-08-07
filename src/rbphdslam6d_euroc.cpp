@@ -37,6 +37,9 @@
 #include "external/argparse.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/pose_array.hpp"
+#include "LandmarkWithDescriptor.hpp"
+#include "measurement_models/MeasurementModelWithDescriptor.hpp"
+#include "measurement_models/MeasurementWithDescriptor.hpp"
 #include "measurement_models/MeasurementModel_3D_stereo_orb.hpp"
 #include "misc/EigenYamlSerialization.hpp"
 #include "visualization_msgs/msg/marker.hpp"
@@ -90,6 +93,10 @@
 #endif
 
 using namespace rfs;
+
+typedef MeasurementModelWithDescriptor<MeasurementModel_3D_stereo_orb, ORBDescriptor> MeasurementModel_3D_stereo_orb_desc;
+typedef MeasurementModel_3D_stereo_orb_desc::TLandmark Landmark3dORB;
+typedef MeasurementModel_3D_stereo_orb_desc::TMeasurement Measurement3dORB;
 
 static const int orb_th_low = 50;
 static const int orb_th_high = 100;
@@ -153,14 +160,6 @@ public:
     dTimeStamp_ = TimeStamp(dT_);
 
     nSegments_ = node["config"]["trajectory"]["nSegments"].as<int>();
-    max_dx_ = node["config"]["trajectory"]["max_dx_per_sec"].as<double>();
-    max_dy_ = node["config"]["trajectory"]["max_dy_per_sec"].as<double>();
-    max_dz_ = node["config"]["trajectory"]["max_dz_per_sec"].as<double>();
-    max_dqx_ = node["config"]["trajectory"]["max_dqx_per_sec"].as<double>();
-    max_dqy_ = node["config"]["trajectory"]["max_dqy_per_sec"].as<double>();
-    max_dqz_ = node["config"]["trajectory"]["max_dqz_per_sec"].as<double>();
-    max_dqw_ = node["config"]["trajectory"]["max_dqw_per_sec"].as<double>();
-    min_dx_ = node["config"]["trajectory"]["min_dx_per_sec"].as<double>();
     vardx_ = node["config"]["trajectory"]["vardx"].as<double>();
     vardy_ = node["config"]["trajectory"]["vardy"].as<double>();
     vardz_ = node["config"]["trajectory"]["vardz"].as<double>();
@@ -235,6 +234,15 @@ public:
     eurocFolder_ = node["config"]["euroc"]["folder"].as<std::string>();
     eurocTimestampsFilename_ =
         node["config"]["euroc"]["timestampsFilename"].as<std::string>();
+
+    if (node["base_link_to_cam0"]) {
+      Eigen::MatrixXd T_mat;
+      if (YAML::convert<Eigen::MatrixXd>::decode(node["base_link_to_cam0"], T_mat) &&
+          T_mat.rows() == 4 && T_mat.cols() == 4) {
+        R_base_link_cam0_ = T_mat.block<3, 3>(0, 0);
+        t_base_link_cam0_ = T_mat.block<3, 1>(0, 3);
+      }
+    }
 
     for (auto camera : node["camera_params"]) {
       CameraParams params;
@@ -663,7 +671,7 @@ public:
       *pOdomFile_  << odometry_[ni] << "\n";
     }
 
-    MeasurementModel_3D_stereo_orb::TMeasurement::Vec z;
+    MeasurementModel_3D_stereo_orb_desc::TMeasurement::Vec z;
 
     if (ni < measurements_.size()) {
       for (auto &measurement : measurements_[ni]) {
@@ -705,8 +713,8 @@ public:
 
       int mapSize = pFilter_->getGMSize(i_w_max);
       for (int m = 0; m < mapSize; m++) {
-        MeasurementModel_3D_stereo_orb::TLandmark::Vec u;
-        MeasurementModel_3D_stereo_orb::TLandmark::Mat S;
+        Landmark3dORB::Vec u;
+        Landmark3dORB::Mat S;
         double w;
 
 
@@ -725,10 +733,10 @@ public:
   void setupRBPHDFilter() {
 
     pFilter_ = std::make_unique<
-        RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
-                    MeasurementModel_3D_stereo_orb,
-                    KalmanFilter<StaticProcessModel<Landmark3d>,
-                                 MeasurementModel_3D_stereo_orb>>>(nParticles_);
+        RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3dORB>,
+                    MeasurementModel_3D_stereo_orb_desc,
+                    KalmanFilter<StaticProcessModel<Landmark3dORB>,
+                                 MeasurementModel_3D_stereo_orb_desc>>>(nParticles_);
 
     double dt = dTimeStamp_.getTimeAsDouble();
 
@@ -749,7 +757,7 @@ public:
 
     // configure landmark process model (only need to set once since timesteps
     // are constant)
-    Landmark3d::Mat Q_lm;
+    Landmark3dORB::Mat Q_lm;
     Q_lm.setZero();
     Q_lm(0, 0) = varlmx_;
     Q_lm(1, 1) = varlmy_;
@@ -758,7 +766,7 @@ public:
     pFilter_->getLmkProcessModel()->setNoise(Q_lm);
 
     // configure measurement model
-    MeasurementModel_3D_stereo_orb::TMeasurement::Mat R;
+    MeasurementModel_3D_stereo_orb_desc::TMeasurement::Mat R;
     R << varzx_, 0, 0, 0, varzy_, 0, 0, 0, varzz_;
     R *= zNoiseInflation_;
     pFilter_->getMeasurementModel()->setNoise(R);
@@ -822,7 +830,7 @@ public:
   }
 
   visualization_msgs::msg::Marker makeMeasurementsMarker(
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &Z) {
+      std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement> &Z) {
     auto best_particle = pFilter_->getBestParticle();
 
     auto position = best_particle->getPose()->getPos();
@@ -859,15 +867,11 @@ public:
       gtsam::StereoPoint2 stereopoint(Z[i].get());
       gtsam::Point3 point =
           measurementModel->config.camera.camera.backproject(stereopoint);
+      gtsam::Point3 point_body = R_base_link_cam0_ * point + t_base_link_cam0_;
 
-      // std::cout << "Z[" << i << "]: " << Z[i].get(0) << " " << Z[i].get(1)
-      //           << " " << Z[i].get(2) << "\n";
-      // std::cout << "point: " << point.x() << " " << point.y() << " "
-      //           << point.z() << "\n";
-
-      marker.points[i * 2 + 1].x = point.x();
-      marker.points[i * 2 + 1].y = point.y();
-      marker.points[i * 2 + 1].z = point.z();
+      marker.points[i * 2 + 1].x = point_body.x();
+      marker.points[i * 2 + 1].y = point_body.y();
+      marker.points[i * 2 + 1].z = point_body.z();
     }
 
     std::cout << "published " << Z.size() << " measurements\n";
@@ -1046,10 +1050,10 @@ public:
 
     // std::cout <<  "frustum\n";
     for (size_t i = 0; i < marker_points.size(); i++) {
-      // std::cout << marker_points[i].transpose() << "\n";
-      marker.points[i].x = marker_points[i][0];
-      marker.points[i].y = marker_points[i][1];
-      marker.points[i].z = marker_points[i][2];
+      gtsam::Point3 point_body = R_base_link_cam0_ * marker_points[i] + t_base_link_cam0_;
+      marker.points[i].x = point_body.x();
+      marker.points[i].y = point_body.y();
+      marker.points[i].z = point_body.z();
     }
 
     marker.scale.x = 0.1;
@@ -1347,7 +1351,7 @@ return poses;
   }
 
   std::unique_ptr<visualization_msgs::msg::MarkerArray> makeRosMarkerArray(
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &Z) {
+      std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement> &Z) {
     auto marker_array_msg =
         std::make_unique<visualization_msgs::msg::MarkerArray>();
     marker_array_msg->markers.push_back(makeFrustumMarker());
@@ -1368,19 +1372,20 @@ return poses;
       std::vector<cv::KeyPoint> &keypoints_right, cv::Mat &descriptors_left,
       cv::Mat &descriptors_right,
       std::vector<cv::DMatch> &matches_left_to_right,
-      std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> &measurements,
+      std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement> &measurements,
       double time) {
 
     std::cout << "number of matches: " << matches_left_to_right.size() << "        \n";
     for (int i = 0; i < matches_left_to_right.size(); i++) {
 
-      MeasurementModel_3D_stereo_orb::TMeasurement measurement;
-      MeasurementModel_3D_stereo_orb::TMeasurement::Vec z;
+      MeasurementModel_3D_stereo_orb_desc::TMeasurement measurement;
+      MeasurementModel_3D_stereo_orb_desc::TMeasurement::Vec z;
       z << keypoints_left[matches_left_to_right[i].queryIdx].pt.x,
           keypoints_right[matches_left_to_right[i].trainIdx].pt.x,
           keypoints_left[matches_left_to_right[i].queryIdx].pt.y;
       measurement.set(z);
       measurement.setTime(time);
+      measurement.desc.from_mat(descriptors_left.row(matches_left_to_right[i].queryIdx));
       measurements.push_back(measurement);
     }
   }
@@ -1777,7 +1782,7 @@ return poses;
       computeStereoMatches(keypoints_left, keypoints_right, desc_left,
                            desc_right, matches_left_to_right);
       measurements_.push_back(
-          std::vector<MeasurementModel_3D_stereo_orb::TMeasurement>());
+          std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement>());
       stereoMatchesToMeasurments(keypoints_left, keypoints_right, desc_left,
                                  desc_right, matches_left_to_right,
                                  measurements_[ni], tframe);
@@ -1805,7 +1810,7 @@ return poses;
                 << "\n";
 
       {
-        std::vector<MeasurementModel_3D_stereo_orb::TMeasurement> Z_copy =
+        std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement> Z_copy =
             measurements_[ni];
 
         ////////// Update Step //////////
@@ -1822,7 +1827,7 @@ return poses;
         }
         std::cout << ni + 1 << "/" << nImages
                   << "                                   \r";
-        cv::waitKey(1); // Wait for a keystroke in the window
+        cv::waitKey(0); // Wait for a keystroke in the window
       }
     }
     std::cout << "loaded images\n";
@@ -1839,14 +1844,6 @@ private:
 
   // Trajectory
   int nSegments_;
-  double max_dx_;
-  double max_dy_;
-  double max_dz_;
-  double max_dqx_;
-  double max_dqy_;
-  double max_dqz_;
-  double max_dqw_;
-  double min_dx_;
   double vardx_;
   double vardy_;
   double vardz_;
@@ -1877,17 +1874,17 @@ private:
   double varzx_;
   double varzy_;
   double varzz_;
-  std::vector<std::vector<MeasurementModel_3D_stereo_orb::TMeasurement>>
+  std::vector<std::vector<MeasurementModel_3D_stereo_orb_desc::TMeasurement>>
       measurements_;
 
   // Filters
-  KalmanFilter<StaticProcessModel<Landmark3d>, MeasurementModel_3D_stereo_orb>
+  KalmanFilter<StaticProcessModel<Landmark3dORB>, MeasurementModel_3D_stereo_orb_desc>
       kf_;
   std::unique_ptr<
-      RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3d>,
-                  MeasurementModel_3D_stereo_orb,
-                  KalmanFilter<StaticProcessModel<Landmark3d>,
-                               MeasurementModel_3D_stereo_orb>>>
+      RBPHDFilter<MotionModel_Odometry6d, StaticProcessModel<Landmark3dORB>,
+                  MeasurementModel_3D_stereo_orb_desc,
+                  KalmanFilter<StaticProcessModel<Landmark3dORB>,
+                               MeasurementModel_3D_stereo_orb_desc>>>
       pFilter_;
   int nParticles_;
   double pNoiseInflation_;
@@ -1971,6 +1968,9 @@ private:
   bool groundtruth_loaded_ = false;
   double t_0_ = 0.0;
   double current_time_ = 0.0;
+
+  Eigen::Matrix3d R_base_link_cam0_ = (Eigen::Matrix3d() << 0, 0, 1, -1, 0, 0, 0, -1, 0).finished();
+  Eigen::Vector3d t_base_link_cam0_ = Eigen::Vector3d::Zero();
 
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr
       particle_poses_pub_;

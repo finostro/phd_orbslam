@@ -92,6 +92,12 @@ namespace rfs{
         return retval;
       }
 
+      double likelihood(const ORBDescriptor &other) const {
+        size_t d = distance(*this, other);
+        if (d > 100) return 0.0;
+        return std::exp(-static_cast<double>(d) * 0.1);
+      }
+
       double likelihood(const ORBDescriptor &left, const ORBDescriptor &right){
         double d = distance(*this, left)+distance(*this, right);
         if (d > 200) return -std::numeric_limits<double>::infinity();
@@ -103,7 +109,7 @@ namespace rfs{
         //std::cout << d << "\n";
         return  ret;
       }
-      double falseAlarmLikelihood(){
+      double falseAlarmLikelihood() const {
 
         return pow(1/2.0/(1-1/2.10) , 256) * pow(1/1.1,32); //1.0;//
       }

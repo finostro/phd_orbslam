@@ -12,21 +12,13 @@ config:
   sec_per_timestep: 0.033333
   trajectory:
     nSegments: 5
-    max_dx_per_sec: 0.010
-    max_dy_per_sec: 0.010
-    max_dz_per_sec: 0.010
-    min_dx_per_sec: 0.10
-    max_dqx_per_sec: 0.10
-    max_dqy_per_sec: 0.05
-    max_dqz_per_sec: 0.050
-    max_dqw_per_sec: 0.050
-    vardx: 0.800
-    vardy: 0.800
-    vardz: 0.800
-    vardqx: 0.0300
-    vardqy: 0.0300
-    vardqz: 0.0300
-    vardqw: 0.0300
+    vardx: 0.400
+    vardy: 0.400
+    vardz: 0.400
+    vardqx: 0.0100
+    vardqy: 0.0100
+    vardqz: 0.0100
+    vardqw: 0.0100
   landmarks:
     nLandmarks: 100
     varlmx: 0.0002

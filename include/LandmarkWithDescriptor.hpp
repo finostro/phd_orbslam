@@ -30,11 +30,12 @@
 
 
 #ifndef LANDMARKWITHDESCRIPTOR_HPP
-#define LANDAMRKWITHDESCRIPTOR_HPP
+#define LANDMARKWITHDESCRIPTOR_HPP
 
 #include "measurement_models/MeasurementModel.hpp"
 #include "Landmark.hpp"
 #include "Pose.hpp"
+#include "ORB.hpp"
 
 namespace rfs{
 
@@ -45,6 +46,14 @@ namespace rfs{
     typedef LandmarkType TLandmark;
 
     TDescriptor desc;
+
+    LandmarkWithDescriptor() : LandmarkType() {}
+
+    LandmarkWithDescriptor(typename LandmarkType::Vec const &x, typename LandmarkType::Mat const &Sx)
+        : LandmarkType(x, Sx) {}
+
+    LandmarkWithDescriptor(typename LandmarkType::Vec const &x, typename LandmarkType::Mat const &Sx, DescriptorType const &d)
+        : LandmarkType(x, Sx), desc(d) {}
 
     double evalGaussianLikelihood(const LandmarkWithDescriptor &x_eval,
                                       double* mDist2 = NULL){
@@ -68,7 +77,11 @@ namespace rfs{
 
   };
 
+  /** Landmark with 3D spatial position and ORB descriptor */
+  typedef LandmarkWithDescriptor<Landmark3d, ORBDescriptor> Landmark3dORB;
 
+  /** Landmark with 2D spatial position and ORB descriptor */
+  typedef LandmarkWithDescriptor<Landmark2d, ORBDescriptor> Landmark2dORB;
 
 }
 

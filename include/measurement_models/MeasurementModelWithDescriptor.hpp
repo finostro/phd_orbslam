@@ -125,16 +125,23 @@ public:
    * \param[in] measurement  \f$\mathbf{z}\f$ measurement, for which the uncertainty is \f$\mathbf{R}\f$
    * \param[out] landmark  \f$\mathbf{m}\f$, predicted landmark position with uncertainty
    */
-  void inverseMeasure( const TPose &pose,
+  bool inverseMeasure( const TPose &pose,
                                const TMeasurement &measurement,
                                TLandmark &landmark ){
-    MeasurementModelType::inverseMeasure(pose, measurement  , landmark );
-    landmark.desc = measurement.desc ;
+    bool success = MeasurementModelType::inverseMeasure(pose, measurement, landmark);
+    landmark.desc = measurement.desc;
+    return success;
   };
 
-  double clutterIntensity( const TMeasurement &z,
-                                   int nZ ){
+  double clutterIntensity( TMeasurement &z,
+                                   int nZ ) const {
     return MeasurementModelType::clutterIntensity(z , nZ) * z.desc.falseAlarmLikelihood();
+  }
+
+  double clutterIntensity( const TMeasurement &z,
+                                   int nZ ) const {
+    TMeasurement &z_nonconst = const_cast<TMeasurement&>(z);
+    return MeasurementModelType::clutterIntensity(z_nonconst , nZ) * z.desc.falseAlarmLikelihood();
   }
 
 
